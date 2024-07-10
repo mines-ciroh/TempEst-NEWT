@@ -94,12 +94,11 @@ class Watershed(object):
         """
         Run a full timeseries at once, but internally use the stepwise approach.
         data must have columns date (as an actual date type), tmax, vp.
-        Will be returned with columns date, day, at, vp actemp, anom, temp.mod
+        Will be returned with columns date, day, at, vp, actemp, anom, temp.mod
         """
         self.initialize_run()
         for row in data.itertuples():
-            self.step(row.date, row.tmax, row.vp)
-        return self.get_history()
+            yield self.step(row.date, row.tmax, row.vp)
         
 
     def run_series(self, data):
@@ -108,16 +107,9 @@ class Watershed(object):
         data must have columns date (as an actual date type), tmax, vp.
         Will be returned with new columns day, actemp, anom, temp.mod
         """
-        data["day"] = data["date"].dt.day_of_year
-        data = data.merge(self.ssn_timeseries, on="day")
-        anoms = data.merge(self.dailies, on="day")
-        anoms["at_anom"] = anoms["tmax"] - anoms["mean_tmax"]
-        anoms["vp_anom"] = anoms["vp"] - anoms["mean_vp"]
-        anoms["anom"] = scipy.signal.fftconvolve(anoms["at_anom"], self.at_conv, mode="full")[:-(len(self.at_conv) - 1)] * self.at_coef +\
-                        scipy.signal.fftconvolve(anoms["vp_anom"], self.vp_conv, mode="full")[:-(len(self.vp_conv) - 1)] * self.vp_coef
-        data = data.merge(anoms[["date", "anom"]], on="date")
-        data["temp.mod"] = data["actemp"] + data["anom"]
-        return data
+        self.run_series_incremental(data)
+        res = self.get_history()[["date", "day", "actemp", "anom", "temp.mod"]]
+        return data.merge(res, on="date")
 
     def from_data(data,
                   at_conv=scipy.stats.lognorm.pdf(np.arange(0, 7), 1),
