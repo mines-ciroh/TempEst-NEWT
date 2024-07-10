@@ -39,13 +39,69 @@ class Watershed(object):
         self.at_conv = at_conv
         self.vp_conv = vp_conv
 
-    def initialize_run(self, start_day):
+    def initialize_run(self):
         # Logs allow efficient handling of a rolling anomaly
         self.at_log = []
         self.vp_log = []
-        self.date = start_day
+        self.history = {
+            "date": [],
+            "day": [],
+            "at": [],
+            "vp": [],
+            "actemp": [],
+            "anom": [],
+            "temp.mod": []
+            }
+    
+    def get_history(self):
+        return pd.DataFrame(self.history)
 
-    # TODO: implement incremental run.
+    def step(self, date, at, vp):
+        """
+        Run a single step, incrementally.  Updates history and returns
+        today's prediction.
+        """
+        self.doy = date.day_of_year
+        self.date = date
+        today = self.dailies[self.dailies["day"] == self.doy]
+        # "logs" allow efficient processing without having to grab the whole
+        # history.
+        self.at_log.append(at - today["mean_tmax"].iloc[0])
+        self.vp_log.append(vp - today["mean_vp"].iloc[0])
+        # Cut off beginning of logs if they're too long.
+        if len(self.at_log) > len(self.at_conv):
+            self.at_log = self.at_log[-len(self.at_conv):]
+        if len(self.vp_log) > len(self.vp_conv):
+            self.vp_log = self.vp_log[-len(self.vp_conv):]
+        # Now, build the prediction
+        ssn = self.ssn_timeseries["actemp"][
+            self.ssn_timeseries["day"] == self.doy].iloc[0]
+        at_anom = np.convolve(self.at_log, self.at_conv, mode="valid")[-1]
+        vp_anom = np.convolve(self.vp_log, self.vp_conv, mode="valid")[-1]
+        anom = at_anom * self.at_coef + vp_anom * self.vp_coef
+        pred = ssn + anom
+        # Update history
+        self.history["date"].append(self.date)
+        self.history["day"].append(self.doy)
+        self.history["at"].append(at)
+        self.history["vp"].append(vp)
+        self.history["actemp"].append(ssn)
+        self.history["anom"].append(anom)
+        self.history["temp.mod"].append(pred)
+        return pred
+    
+    def run_series_incremental(self, data):
+        """
+        Run a full timeseries at once, but internally use the stepwise approach.
+        data must have columns date (as an actual date type), tmax, vp.
+        Will be returned with columns date, day, at, vp actemp, anom, temp.mod
+        """
+        self.initialize_run()
+        for row in data.itertuples():
+            self.step(row.date, row.tmax, row.vp)
+        return self.get_history()
+        
+
     def run_series(self, data):
         """
         Run a full timeseries at once.
