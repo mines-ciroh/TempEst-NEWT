@@ -11,7 +11,8 @@ from NEWT import engines
 
 def anomilize(data):
     data["day"] = data["date"].dt.day_of_year
-    data = data.merge(rts.ThreeSine.from_data(data).generate_ts(), on="day")  # adds `actemp`
+    data = data.merge(rts.ThreeSine.from_data(data[["day", "temperature"]]
+                                              ).generate_ts(), on="day")  # adds `actemp`
     data["st_anom"] = data["temperature"] - data["actemp"]
     # data["stm_anom"] = data["temperature.max"] - data["actemp"]
     data = data.merge(data.groupby("day")["tmax"].mean().rename("tmax_day"), on="day")
@@ -147,18 +148,18 @@ class Watershed(object):
         blend_window = 60
         (self.seasonality, self.at_coef, self.vp_coef, self.dailies) =\
             engine(self.seasonality, self.at_coef, self.vp_coef, self.dailies,
-                   self.get_history(), self.statics)
+                    self.get_history(), self.statics)
         # We want to smoothly blend it in, rather than an abrupt jump
         ssnts = self.ssn_timeseries.rename(columns={"actemp": "oldtemp"}).merge(
             self.seasonality.generate_ts(), on="day"
             )
         ssnts["weights"] = 1.0
         ssnts.loc[(ssnts["day"] >= self.doy) &
-                         (ssnts["day"] < self.doy + blend_window),
-                         "weights"] =\
+                          (ssnts["day"] < self.doy + blend_window),
+                          "weights"] =\
             np.arange(blend_window) / blend_window
         ssnts["actemp"] = (ssnts["actemp"] * ssnts["weights"] +
-                           ssnts["oldtemp"] * (1-ssnts["weights"]))
+                            ssnts["oldtemp"] * (1-ssnts["weights"]))
         self.ssn_timeseries = ssnts.drop(columns=["oldtemp", "weights"])
     
     def reset_coefs(self):
@@ -249,11 +250,11 @@ class Watershed(object):
         return data.merge(res, on="date")
 
     def from_data(data,
-                  lin_ssn=True,
+                  lin_ssn=False,
                   names=["Intercept", "Amplitude", "SummerDay"],
-                  xs=["prcp"],
-                  start=1,
-                  until=180,
+                  xs=["at"],
+                  start=330,
+                  until=30,
                   at_conv=scipy.stats.lognorm.pdf(np.arange(0, 7), 1),
                   vp_conv=[1, 1]):
         """
@@ -271,8 +272,16 @@ class Watershed(object):
         at_day = data.groupby(["day"], as_index=False)["tmax"].mean().rename(columns={"tmax": "mean_tmax"})
         vp_day = data.groupby(["day"], as_index=False)["vp"].mean().rename(columns={"vp": "mean_vp"})
         ssn = rts.ThreeSine.from_data(data[["day", "temperature"]])
-        anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"], at_conv, mode="full")[:-(len(at_conv) - 1)]
-        anoms["anom_hummod"] = scipy.signal.fftconvolve(anoms["vp_anom"], vp_conv, mode="full")[:-(len(vp_conv) - 1)]
+        uncal_prd = Watershed(ssn, 0, 0, at_day, vp_day,
+                              year_engine=linear_ssn, year_doy=until).\
+            run_series(data) if lin_ssn else None
+        anoms = anoms.drop(columns=["temperature", "st_anom"]).merge(
+            uncal_prd[["date", "temp.mod", "temperature"]], on="date").assign(
+                st_anom = lambda x: x["temperature"] - x["temp.mod"]) if lin_ssn else anoms
+        anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"],
+                                                       at_conv, mode="full")[:-(len(at_conv) - 1)]
+        anoms["anom_hummod"] = scipy.signal.fftconvolve(anoms["vp_anom"],
+                                                        vp_conv, mode="full")[:-(len(vp_conv) - 1)]
         sol = np.linalg.lstsq(np.array(anoms[["anom_atmod", "anom_hummod"]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
         at_coef = sol[0]
         vp_coef = sol[1]
