@@ -246,7 +246,7 @@ class Watershed(object):
         Will be returned with new columns day, actemp, anom, temp.mod
         """
         _ = list(self.run_series_incremental(data))
-        res = self.get_history()[["date", "day", "actemp", "anom", "temp.mod"]]
+        res = self.get_history()[["date", "actemp", "anom", "temp.mod"]]
         return data.merge(res, on="date")
 
     def from_data(data,
@@ -268,6 +268,7 @@ class Watershed(object):
                 data.rename(columns={"tmax": "at"}),
                                       names, xs, start, until) if
             lin_ssn else None)
+        data["day"] = data["date"].dt.day_of_year
         anoms = anomilize(data)
         at_day = data.groupby(["day"], as_index=False)["tmax"].mean().rename(columns={"tmax": "mean_tmax"})
         vp_day = data.groupby(["day"], as_index=False)["vp"].mean().rename(columns={"vp": "mean_vp"})
