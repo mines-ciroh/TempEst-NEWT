@@ -80,6 +80,12 @@ class Watershed(object):
         self.climate_learnrate = climate_learnrate
         self.climate_recency = climate_recency
         self.period = 0
+    
+    def coefs_to_df(self):
+        return self.seasonality.to_df().assign(
+            at_coef = self.at_coef,
+            vp_coef = self.vp_coef
+            )
 
     def initialize_run(self):
         # Logs allow efficient handling of a rolling anomaly
