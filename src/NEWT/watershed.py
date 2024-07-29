@@ -6,6 +6,7 @@ import rtseason as rts
 import scipy
 import pandas as pd
 import numpy as np
+from yaml import load, dump, Loader
 from datetime import timedelta
 from NEWT import engines
 
@@ -81,6 +82,27 @@ class Watershed(object):
         self.climate_recency = climate_recency
         self.period = 0
     
+    def from_file(filename, estimator=None):
+        with open(filename) as f:
+            coefs = load(f, Loader)
+        # Figure out how to handle dailies, and maybe engines...
+        raise NotImplementedError("File loading not yet implemented")
+        return Watershed(
+            rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
+            coefs["at_coef"], coefs["vp_coef"], None, None  # at_day/vp_day
+            )
+    
+    def to_file(self, filename):
+        ssn = {k: v[0] for k, v in self.seasonality.to_df()
+               if not k in ["R2", "RMSE"]}
+        rest = {
+            "at_coef": self.at_coef,
+            "vp_coef": self.vp_coef
+            }
+        data = ssn | rest
+        with open(filename, "w") as f:
+            dump(data, f)
+    
     def coefs_to_df(self):
         return self.seasonality.to_df().assign(
             at_coef = self.at_coef,
@@ -96,14 +118,16 @@ class Watershed(object):
         self.prcp = None
         self.swe = None
         self.srad = None
+        self.temperature = None
+        self.timestep = 0
         self.history = {
             "date": [],
             "day": [],
             "at": [],
             "vp": [],
-            "prcp": [],
-            "swe": [],
-            "srad": [],
+            # "prcp": [],
+            # "swe": [],
+            # "srad": [],
             "actemp": [],
             "anom": [],
             "temp.mod": []
@@ -121,18 +145,18 @@ class Watershed(object):
         return self.vp
     def set_vp(self, vp):
         self.vp = vp
-    def get_prcp(self):
-        return self.prcp
-    def set_prcp(self, prcp):
-        self.prcp = prcp
-    def get_swe(self):
-        return self.swe
-    def set_swe(self, swe):
-        self.swe = swe
-    def get_srad(self):
-        return self.srad
-    def set_srad(self, srad):
-        self.srad = srad
+    # def get_prcp(self):
+    #     return self.prcp
+    # def set_prcp(self, prcp):
+    #     self.prcp = prcp
+    # def get_swe(self):
+    #     return self.swe
+    # def set_swe(self, swe):
+    #     self.swe = swe
+    # def get_srad(self):
+    #     return self.srad
+    # def set_srad(self, srad):
+    #     self.srad = srad
     def get_st(self):
         return self.temperature
     def get_date(self):
@@ -178,19 +202,19 @@ class Watershed(object):
         self.dailies = self.statics["dailies"].copy()
         self.ssn_timeseries = self.seasonality.generate_ts()
 
-    def step(self, date=None, at=None, vp=None, prcp=None, swe=None, srad=None):
+    def step(self, at=None, vp=None): #, prcp=None, swe=None, srad=None):
         """
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
-        self.date = date if date is not None else self.date + timedelta(1)
+        self.date = self.date + timedelta(1)
         self.doy = self.date.day_of_year
         today = self.dailies[self.dailies["day"] == self.doy]
         at = at if at is not None else self.at
         vp = vp if vp is not None else self.vp
-        prcp = prcp if prcp is not None else self.prcp
-        swe = swe if swe is not None else self.swe
-        srad = srad if srad is not None else self.srad
+        # prcp = prcp if prcp is not None else self.prcp
+        # swe = swe if swe is not None else self.swe
+        # srad = srad if srad is not None else self.srad
         # "logs" allow efficient processing without having to grab the whole
         # history.
         self.at_log.append(at - today["mean_tmax"].iloc[0])
@@ -217,9 +241,9 @@ class Watershed(object):
         self.history["actemp"].append(ssn)
         self.history["anom"].append(anom)
         self.history["temp.mod"].append(pred)
-        self.history["swe"].append(swe)
-        self.history["prcp"].append(prcp)
-        self.history["srad"].append(srad)
+        # self.history["swe"].append(swe)
+        # self.history["prcp"].append(prcp)
+        # self.history["srad"].append(srad)
         # Run triggers
         self.period += 1
         if (self.climate_engine is not None and
@@ -231,6 +255,7 @@ class Watershed(object):
         if (self.dynamic_engine is not None and 
             self.period % self.dynamic_period == 0):
             self.trigger_engine(self.dynamic_engine)
+        self.timestep += 1
         # Result
         return pred
     
@@ -242,7 +267,7 @@ class Watershed(object):
         """
         self.initialize_run()
         for row in data.itertuples():
-            yield self.step(row.date, row.tmax, row.vp, row.prcp)
+            yield self.step(row.date, row.tmax, row.vp) #, row.prcp)
         
 
     def run_series(self, data):
