@@ -44,15 +44,14 @@ class NextBmi(Bmi):
         """
         Initialize the model.  Filename points to input file.
         """
-        self._model = Watershed.from_file(filename)
-        self._model.initialize_run()
-        self._values = {self.swt: self._model.temperature,
-                        self.at: self._model.at,
-                        self.vp: self._model.vp}
+        self._model = Watershed.from_file(filename, True)
+        # self._model.initialize_run()
+        self._values = {self.swt: [self._model.get_st, None],
+                        self.at: [self._model.get_at, self._model.set_at],
+                        self.vp: [self._model.get_vp, self._model.set_vp]}
         self._var_units = {self.swt: "C",
                            self.at: "C",
-                           self.vp: "Pa",
-                           self.prcp: "mm"}
+                           self.vp: "Pa"}
         self._var_loc = {self.swt: "node"}
         self._grids = self.swt
         self._grid_type = "scalar"
@@ -117,7 +116,7 @@ class NextBmi(Bmi):
     
     def get_value_ptr(self, name):
         # TODO: translation between Watershed values (scalar) and arrays
-        return self._values[name]
+        return self._values[name][0]()
     
     def get_value(self, name, dest):
         dest[:] = np.array([self.get_value_ptr(name)])
@@ -127,7 +126,7 @@ class NextBmi(Bmi):
         return self.get_value(name, dest)
     
     def set_value(self, name, src):
-        self._values[name] = src[0]
+        self._values[name][1](src[0])
         
     def set_value_at_indices(self, name, inds, src):
         self.set_value(name, src)

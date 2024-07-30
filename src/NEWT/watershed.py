@@ -81,21 +81,26 @@ class Watershed(object):
         self.climate_learnrate = climate_learnrate
         self.climate_recency = climate_recency
         self.period = 0
+        self.date = None
     
-    def from_file(filename, estimator=None):
+    def from_file(filename, init=False, estimator=None):
         with open(filename) as f:
             coefs = load(f, Loader)
-        return Watershed(
+        ws = Watershed(
             rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
             coefs["at_coef"], coefs["vp_coef"],
             pd.DataFrame(coefs["at_day"]),
             pd.DataFrame(coefs["vp_day"])
             )
+        if init:
+            ws.initialize_run(coefs["date"])
+        return ws
     
     def to_file(self, filename):
-        ssn = {k: v[0] for k, v in self.seasonality.to_df()
+        ssn = {k: v[0] for k, v in self.seasonality.to_df().items()
                if not k in ["R2", "RMSE"]}
         rest = {
+            "date": self.date,
             "at_coef": self.at_coef,
             "vp_coef": self.vp_coef,
             "at_day": self.dailies[["day", "mean_tmax"]].to_dict(),
@@ -111,7 +116,7 @@ class Watershed(object):
             vp_coef = self.vp_coef
             )
 
-    def initialize_run(self):
+    def initialize_run(self, start=None):
         # Logs allow efficient handling of a rolling anomaly
         self.at_log = []
         self.vp_log = []
@@ -122,6 +127,7 @@ class Watershed(object):
         self.srad = None
         self.temperature = None
         self.timestep = 0
+        self.date = start
         self.history = {
             "date": [],
             "day": [],
@@ -204,12 +210,12 @@ class Watershed(object):
         self.dailies = self.statics["dailies"].copy()
         self.ssn_timeseries = self.seasonality.generate_ts()
 
-    def step(self, at=None, vp=None): #, prcp=None, swe=None, srad=None):
+    def step(self, date=None, at=None, vp=None): #, prcp=None, swe=None, srad=None):
         """
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
-        self.date = self.date + timedelta(1)
+        self.date = self.date + timedelta(1) if date is None else date
         self.doy = self.date.day_of_year
         today = self.dailies[self.dailies["day"] == self.doy]
         at = at if at is not None else self.at
