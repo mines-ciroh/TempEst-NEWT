@@ -85,11 +85,11 @@ class Watershed(object):
     def from_file(filename, estimator=None):
         with open(filename) as f:
             coefs = load(f, Loader)
-        # Figure out how to handle dailies, and maybe engines...
-        raise NotImplementedError("File loading not yet implemented")
         return Watershed(
             rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
-            coefs["at_coef"], coefs["vp_coef"], None, None  # at_day/vp_day
+            coefs["at_coef"], coefs["vp_coef"],
+            pd.DataFrame(coefs["at_day"]),
+            pd.DataFrame(coefs["vp_day"])
             )
     
     def to_file(self, filename):
@@ -97,7 +97,9 @@ class Watershed(object):
                if not k in ["R2", "RMSE"]}
         rest = {
             "at_coef": self.at_coef,
-            "vp_coef": self.vp_coef
+            "vp_coef": self.vp_coef,
+            "at_day": self.dailies[["day", "mean_tmax"]].to_dict(),
+            "vp_day": self.dailies[["day", "mean_vp"]].to_dict()
             }
         data = ssn | rest
         with open(filename, "w") as f:
