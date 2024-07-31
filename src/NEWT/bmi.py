@@ -23,7 +23,7 @@ class NextBmi(Bmi):
     
     _name = "TempEst-NEXT"
     _input_var_names = ("land_surface_air__temperature",
-                        "air_water~vapor__partial_pressure", # I guess?
+                        # "air_water~vapor__partial_pressure", # I guess?
                         )
     _output_var_names = ("channel_water__temperature",)
     # Convenience
