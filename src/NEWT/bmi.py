@@ -28,7 +28,7 @@ class NextBmi(Bmi):
     _output_var_names = ("channel_water__temperature",)
     # Convenience
     swt = _output_var_names[0]
-    (at, vp) = _input_var_names
+    at = _input_var_names
     def __init__(self):
         self._model = None
         self._values = {}
@@ -132,7 +132,7 @@ class NextBmi(Bmi):
     
     def set_value(self, name, src):
         self._values[name][1](src[0])
-        self.vptrs[name][0] = self.values[name][0]()
+        self._vptrs[name][0] = self._values[name][0]()
         
     def set_value_at_indices(self, name, inds, src):
         self.set_value(name, src)

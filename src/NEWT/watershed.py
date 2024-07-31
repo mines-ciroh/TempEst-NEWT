@@ -90,7 +90,7 @@ class Watershed(object):
             rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
             coefs["at_coef"], coefs["vp_coef"],
             pd.DataFrame(coefs["at_day"]),
-            pd.DataFrame(coefs["vp_day"])
+            None # pd.DataFrame(coefs["vp_day"])
             )
         if init:
             ws.initialize_run(coefs["date"])
