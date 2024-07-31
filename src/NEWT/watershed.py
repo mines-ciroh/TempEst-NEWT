@@ -18,8 +18,8 @@ def anomilize(data):
     # data["stm_anom"] = data["temperature.max"] - data["actemp"]
     data = data.merge(data.groupby("day")["tmax"].mean().rename("tmax_day"), on="day")
     data["at_anom"] = data["tmax"] - data["tmax_day"]
-    data = data.merge(data.groupby("day")["vp"].mean().rename("vp_day"), on="day")
-    data["vp_anom"] = data["vp"] - data["vp_day"]
+    # data = data.merge(data.groupby("day")["vp"].mean().rename("vp_day"), on="day")
+    # data["vp_anom"] = data["vp"] - data["vp_day"]
     return data
 
 
@@ -103,8 +103,8 @@ class Watershed(object):
             "date": self.date,
             "at_coef": self.at_coef,
             "vp_coef": self.vp_coef,
-            "at_day": self.dailies[["day", "mean_tmax"]].to_dict(),
-            "vp_day": self.dailies[["day", "mean_vp"]].to_dict()
+            "at_day": self.dailies[["day", "mean_tmax"]].to_dict()
+            # "vp_day": self.dailies[["day", "mean_vp"]].to_dict()
             }
         data = ssn | rest
         with open(filename, "w") as f:
@@ -226,7 +226,7 @@ class Watershed(object):
         # "logs" allow efficient processing without having to grab the whole
         # history.
         self.at_log.append(at - today["mean_tmax"].iloc[0])
-        self.vp_log.append(vp - today["mean_vp"].iloc[0])
+        self.vp_log.append(0) #vp - today["mean_vp"].iloc[0])
         # Cut off beginning of logs if they're too long.
         if len(self.at_log) > len(self.at_conv):
             self.at_log = self.at_log[-len(self.at_conv):]
