@@ -63,7 +63,7 @@ class Watershed(object):
         self.ssn_timeseries = seasonality.generate_ts()  # day, actemp
         self.at_coef = at_coef
         self.vp_coef = vp_coef
-        self.dailies = at_day.merge(vp_day, on="day")
+        self.dailies = at_day  #.merge(vp_day, on="day")
         self.at_conv = at_conv
         self.vp_conv = vp_conv
         self.statics = {
@@ -236,7 +236,7 @@ class Watershed(object):
         ssn = self.ssn_timeseries["actemp"][
             self.ssn_timeseries["day"] == self.doy].iloc[0]
         at_anom = np.convolve(self.at_log, self.at_conv, mode="valid")[-1]
-        vp_anom = np.convolve(self.vp_log, self.vp_conv, mode="valid")[-1]
+        vp_anom = 0 # np.convolve(self.vp_log, self.vp_conv, mode="valid")[-1]
         anom = at_anom * self.at_coef + vp_anom * self.vp_coef
         pred = ssn + anom
         pred = pred if pred >= 0 else 0
@@ -275,7 +275,7 @@ class Watershed(object):
         """
         self.initialize_run()
         for row in data.itertuples():
-            yield self.step(row.date, row.tmax, row.vp) #, row.prcp)
+            yield self.step(row.date, row.tmax) #, row.vp) #, row.prcp)
         
 
     def run_series(self, data):
@@ -310,9 +310,9 @@ class Watershed(object):
         data["day"] = data["date"].dt.day_of_year
         anoms = anomilize(data)
         at_day = data.groupby(["day"], as_index=False)["tmax"].mean().rename(columns={"tmax": "mean_tmax"})
-        vp_day = data.groupby(["day"], as_index=False)["vp"].mean().rename(columns={"vp": "mean_vp"})
+        vp_day = None # data.groupby(["day"], as_index=False)["vp"].mean().rename(columns={"vp": "mean_vp"})
         ssn = rts.ThreeSine.from_data(data[["day", "temperature"]])
-        uncal_prd = Watershed(ssn, 0, 0, at_day, vp_day,
+        uncal_prd = Watershed(ssn, 0, 0, at_day, vp_day=None,
                               year_engine=linear_ssn, year_doy=until).\
             run_series(data) if lin_ssn else None
         anoms = anoms.drop(columns=["temperature", "st_anom"]).merge(
@@ -320,10 +320,12 @@ class Watershed(object):
                 st_anom = lambda x: x["temperature"] - x["temp.mod"]) if lin_ssn else anoms
         anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"],
                                                        at_conv, mode="full")[:-(len(at_conv) - 1)]
-        anoms["anom_hummod"] = scipy.signal.fftconvolve(anoms["vp_anom"],
-                                                        vp_conv, mode="full")[:-(len(vp_conv) - 1)]
-        sol = np.linalg.lstsq(np.array(anoms[["anom_atmod", "anom_hummod"]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
+        # anoms["anom_hummod"] = scipy.signal.fftconvolve(anoms["vp_anom"],
+        #                                                 vp_conv, mode="full")[:-(len(vp_conv) - 1)]
+        sol = np.linalg.lstsq(np.array(anoms[["anom_atmod"
+                                              # ,"anom_hummod"
+                                              ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
         at_coef = sol[0]
-        vp_coef = sol[1]
+        vp_coef = 0 # sol[1]
         return Watershed(ssn, at_coef, vp_coef, at_day, vp_day, at_conv, vp_conv,
                          year_engine=linear_ssn, year_doy=until)

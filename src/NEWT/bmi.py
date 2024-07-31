@@ -48,16 +48,22 @@ class NextBmi(Bmi):
         # self._model.initialize_run()
         self._values = {self.swt: [self._model.get_st, None],
                         self.at: [self._model.get_at, self._model.set_at],
-                        self.vp: [self._model.get_vp, self._model.set_vp]}
+                        # self.vp: [self._model.get_vp, self._model.set_vp]
+                        }
+        self._vptrs = {self.swt: [self._model.temperature],
+                        self.at: [self._model.at]}
         self._var_units = {self.swt: "C",
                            self.at: "C",
-                           self.vp: "Pa"}
+                           # self.vp: "Pa"
+                           }
         self._var_loc = {self.swt: "node"}
         self._grids = self.swt
         self._grid_type = "scalar"
     
     def update(self):
         self._model.step()
+        for k in self._vptrs:
+            self._vptrs[k][0] = self._values[k][0]()
     
     def update_until(self, time):
         while self._model.timestep < time:
@@ -115,11 +121,10 @@ class NextBmi(Bmi):
         return 1.0
     
     def get_value_ptr(self, name):
-        # TODO: translation between Watershed values (scalar) and arrays
-        return self._values[name][0]()
+        return self._vptrs[name]
     
     def get_value(self, name, dest):
-        dest[:] = np.array([self.get_value_ptr(name)])
+        dest[:] = np.array(self.get_value_ptr(name))
         return dest
     
     def get_value_at_indices(self, name, dest, inds):
@@ -127,6 +132,7 @@ class NextBmi(Bmi):
     
     def set_value(self, name, src):
         self._values[name][1](src[0])
+        self.vptrs[name][0] = self.values[name][0]()
         
     def set_value_at_indices(self, name, inds, src):
         self.set_value(name, src)
