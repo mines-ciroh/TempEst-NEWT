@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from yaml import load, dump, Loader
 from datetime import timedelta
-from NEWT import engines
+from NEWT import engines, analysis
 
 def anomilize(data):
     data["day"] = data["date"].dt.day_of_year
@@ -34,7 +34,8 @@ class Watershed(object):
                 climate_engine=None,
                 climate_period=365,
                 climate_learnrate=0,
-                climate_recency=0):
+                climate_recency=0,
+                extra_history_columns=[]):
         """
         seasonality: a three-sine seasonality object
         at_coef: air temperature anomaly coefficient
@@ -58,6 +59,10 @@ class Watershed(object):
             An engine function must accept seasonality, at_coef, vp_coef,
                 dailies, history (data frame), statics;
                 and return seasonality, at_coef, vp_coef, dailies
+        extra_history_columns: names of added columns to include in model
+            history (e.g., for use by modification engines).  All columns
+            specified must be provided for each step or specified through
+            setters.
         """
         self.seasonality = seasonality
         self.ssn_timeseries = seasonality.generate_ts()  # day, actemp
@@ -82,6 +87,7 @@ class Watershed(object):
         self.climate_recency = climate_recency
         self.period = 0
         self.date = None
+        self.histcol = extra_history_columns
     
     def from_file(filename, init=False, estimator=None):
         with open(filename) as f:
@@ -90,7 +96,9 @@ class Watershed(object):
             rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
             coefs["at_coef"], coefs["vp_coef"],
             pd.DataFrame(coefs["at_day"]),
-            None # pd.DataFrame(coefs["vp_day"])
+            None, # pd.DataFrame(coefs["vp_day"])
+            extra_history_columns=coefs["histcol"] if "histcol" in coefs else \
+                []
             )
         if init:
             ws.initialize_run(coefs["date"])
@@ -103,7 +111,8 @@ class Watershed(object):
             "date": self.date,
             "at_coef": self.at_coef,
             "vp_coef": self.vp_coef,
-            "at_day": self.dailies[["day", "mean_tmax"]].to_dict()
+            "at_day": self.dailies[["day", "mean_tmax"]].to_dict(),
+            "histcol": self.histcol
             # "vp_day": self.dailies[["day", "mean_vp"]].to_dict()
             }
         data = ssn | rest
@@ -128,18 +137,15 @@ class Watershed(object):
         self.temperature = None
         self.timestep = 0
         self.date = start
+        self.extras = {x: None for x in self.histcol}
         self.history = {
             "date": [],
             "day": [],
             "at": [],
-            "vp": [],
-            # "prcp": [],
-            # "swe": [],
-            # "srad": [],
             "actemp": [],
             "anom": [],
             "temp.mod": []
-            }
+            } | {x: [] for x in self.histcol}
     
     def get_history(self):
         return pd.DataFrame(self.history)
@@ -171,6 +177,10 @@ class Watershed(object):
         return self.date
     def set_date(self, date):
         self.date = date
+    def set_extra(self, key, value):
+        self.extras[key] = value
+    def get_extras(self):
+        return self.extras
         
     def trigger_engine(self, engine):
         """
@@ -192,8 +202,12 @@ class Watershed(object):
             self.seasonality.generate_ts(), on="day"
             )
         ssnts["weights"] = 1.0
-        ssnts.loc[(ssnts["day"] >= self.doy) &
-                          (ssnts["day"] < self.doy + blend_window),
+        window_overlap = self.doy + blend_window > 366
+        if window_overlap:
+            pos = (ssnts["day"] >= self.doy) | (ssnts["day"] < (self.doy + blend_window) % 366)
+        else:
+            pos = (ssnts["day"] >= self.doy) & (ssnts["day"] < self.doy + blend_window)
+        ssnts.loc[pos,
                           "weights"] =\
             np.arange(blend_window) / blend_window
         ssnts["actemp"] = (ssnts["actemp"] * ssnts["weights"] +
@@ -210,16 +224,20 @@ class Watershed(object):
         self.dailies = self.statics["dailies"].copy()
         self.ssn_timeseries = self.seasonality.generate_ts()
 
-    def step(self, date=None, at=None, vp=None): #, prcp=None, swe=None, srad=None):
+    def step(self, date=None, at=None, extras=None):
         """
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
+        for k in self.histcol:
+            if (not k in extras) and (self.extras[k] is None):
+                raise ValueError(f"In step, must provide all specified extra data. Missing: {k}")
+        if extras is not None:
+            self.extras = extras
         self.date = self.date + timedelta(1) if date is None else date
         self.doy = self.date.day_of_year
         today = self.dailies[self.dailies["day"] == self.doy]
         at = at if at is not None else self.at
-        vp = vp if vp is not None else self.vp
         # prcp = prcp if prcp is not None else self.prcp
         # swe = swe if swe is not None else self.swe
         # srad = srad if srad is not None else self.srad
@@ -245,10 +263,11 @@ class Watershed(object):
         self.history["date"].append(self.date)
         self.history["day"].append(self.doy)
         self.history["at"].append(at)
-        self.history["vp"].append(vp)
         self.history["actemp"].append(ssn)
         self.history["anom"].append(anom)
         self.history["temp.mod"].append(pred)
+        for k in self.histcol:
+            self.history[k].append(self.extras[k])
         # self.history["swe"].append(swe)
         # self.history["prcp"].append(prcp)
         # self.history["srad"].append(srad)
@@ -263,7 +282,7 @@ class Watershed(object):
         if (self.dynamic_engine is not None and 
             self.period % self.dynamic_period == 0):
             self.trigger_engine(self.dynamic_engine)
-        self.timestep += 1
+        self.timestep += 86400  # seconds per day
         # Result
         return pred
     
@@ -289,6 +308,7 @@ class Watershed(object):
         return data.merge(res, on="date")
 
     def from_data(data,
+                  threshold_engine=True,
                   lin_ssn=False,
                   names=["Intercept", "Amplitude", "SummerDay"],
                   xs=["at"],
@@ -299,6 +319,7 @@ class Watershed(object):
         """
         Train a watershed model from data.
         Requires columns date, temperature, tmax, vp
+        threshold_engine: fit threshold sensitivity engine?
         lin_ssn: fit linear seasonality engine?
         names, xs, start, until: passed to linear seasonality trainer
         """
@@ -320,6 +341,7 @@ class Watershed(object):
                 st_anom = lambda x: x["temperature"] - x["temp.mod"]) if lin_ssn else anoms
         anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"],
                                                        at_conv, mode="full")[:-(len(at_conv) - 1)]
+        thres_eng = engines.make_threshold_engine(anoms) if threshold_engine else None
         # anoms["anom_hummod"] = scipy.signal.fftconvolve(anoms["vp_anom"],
         #                                                 vp_conv, mode="full")[:-(len(vp_conv) - 1)]
         sol = np.linalg.lstsq(np.array(anoms[["anom_atmod"
@@ -328,4 +350,5 @@ class Watershed(object):
         at_coef = sol[0]
         vp_coef = 0 # sol[1]
         return Watershed(ssn, at_coef, vp_coef, at_day, vp_day, at_conv, vp_conv,
-                         year_engine=linear_ssn, year_doy=until)
+                         year_engine=linear_ssn, year_doy=until,
+                         dynamic_engine=thres_eng, dynamic_period=7)

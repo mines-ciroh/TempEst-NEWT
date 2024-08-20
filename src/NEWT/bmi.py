@@ -38,7 +38,7 @@ class NextBmi(Bmi):
         self._grid_type = {}
         self._start_time = 0.0
         self._end_time = np.finfo("float").max
-        self._time_units = "days"
+        self._time_units = "s"  # required, unfortunately
     
     def initialize(self, filename):
         """
@@ -118,7 +118,7 @@ class NextBmi(Bmi):
         return self._time_units
     
     def get_time_step(self):
-        return 1.0
+        return 86400.0
     
     def get_value_ptr(self, name):
         return self._vptrs[name]

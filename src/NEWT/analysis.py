@@ -13,7 +13,72 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas.plotting as pdp
 import os
+import scipy
 rng = np.random.default_rng()
+
+def convolve(series):
+    # Run AT convolution on the provided series.
+    conv = scipy.stats.lognorm.pdf(np.arange(0, 7), 1)
+    return scipy.signal.fftconvolve(series,
+                                    conv, mode="full")[:-(len(conv) - 1)]
+
+def get_sensitivity(data):
+    """
+    Compute single-regression sensitivity of ST to AT anomaly.
+    data must contain: anom_atmod, st_anom
+    """
+    x = data["anom_atmod"].to_numpy()
+    x = np.array([np.ones(x.shape), x]).transpose()
+    y = data["st_anom"].to_numpy()
+    return np.linalg.lstsq(x, y, rcond=None)[0][1]
+
+def get_sensitivities(data):
+    """
+    Compute the sensitivity of ST to AT anomaly, grouped by integer mean
+    temperature (actemp).
+    data must contain: anom_atmod, st_anom, actemp
+    """
+    return data.\
+        assign(int_mean = lambda x: x["actemp"].apply(int)).\
+        groupby("int_mean", as_index=False).\
+        apply(get_sensitivity, include_groups=False).\
+        rename(columns={None: "slope"})
+
+def apply_cutoff(slopes, cut):
+    """
+    For a given slopes (sensitivities) dataset, compute correlation, min
+    sensitivity, and max sensitivity below the specified cutoff.
+    """
+    blw = slopes[slopes["int_mean"] <= cut]
+    return {
+        "cutoff": cut,
+        "corr": blw["int_mean"].corr(blw["slope"]),
+        "min": blw["slope"].min(),
+        "max": blw["slope"].max()
+        }
+
+def find_cutoff(sl):
+    """
+    sl: has int_mean, slope
+    We want:
+        Optimal cutoff point for corr., such that there are at least 3 values above and below the cutoff
+        Sub-cutoff correlation, minimum, maximum
+    """
+    if len(sl) < 7:
+        return {}
+    means = sl["int_mean"].to_numpy()
+    means.sort()
+    min_cutoff = int(means[2]) + 1
+    max_cutoff = int(means[-3])
+    if max_cutoff <= min_cutoff:
+        return apply_cutoff(sl, min_cutoff) | {"sensitivity": np.NaN}
+    best_cutoff = None
+    for cutoff in range(min_cutoff, max_cutoff + 1):
+        fit = apply_cutoff(sl, cutoff)
+        if best_cutoff is None or best_cutoff["corr"]**2 < fit["corr"]**2:
+            best_cutoff = fit
+    return best_cutoff
+    
 
 def perf_summary(data):
     """
