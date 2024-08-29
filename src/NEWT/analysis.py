@@ -65,7 +65,7 @@ def find_cutoff(sl):
         Sub-cutoff correlation, minimum, maximum
     """
     if len(sl) < 7:
-        return {}
+        return None
     means = sl["int_mean"].to_numpy()
     means.sort()
     min_cutoff = int(means[2]) + 1
@@ -75,19 +75,45 @@ def find_cutoff(sl):
     best_cutoff = None
     for cutoff in range(min_cutoff, max_cutoff + 1):
         fit = apply_cutoff(sl, cutoff)
-        if best_cutoff is None or best_cutoff["corr"]**2 < fit["corr"]**2:
+        if best_cutoff is None or best_cutoff["corr"] < fit["corr"]:
             best_cutoff = fit
     return best_cutoff
+
+
+def anomalies(date, y):
+    """
+    Compute day-of-year anomalies for y.  Returns a Series with anomalies.
+    """
+    data = pd.DataFrame({"date": date,
+                         "day": pd.to_datetime(date).dt.day_of_year,
+                         "y": y})
+    means = data.groupby("day", as_index=False)["y"].mean()
+    data = data.merge(means, on="day", suffixes=["", "_mean"])
+    data["anom"] = data["y"] - data["y_mean"]
+    return data["anom"]
+
+
+def nse(sim, obs):
+    sim = sim.to_numpy()
+    obs = obs.to_numpy()
+    return 1 - np.mean((sim - obs)**2) / np.std(obs)**2
     
 
 def perf_summary(data):
     """
-    Summarize performance.  data just needs to have temperature and temp.mod.
+    Summarize performance.  data just needs to have temperature, temp.mod, and
+    date.
     """
+    data["anom.mod"] = anomalies(data["date"], data["temp.mod"])
+    data["anom.obs"] = anomalies(data["date"], data["temperature"])
+    anom_nse = nse(data["anom.mod"], data["anom.obs"])
+    stat_nse = nse(data["anom.obs"][:-1], data["anom.obs"][1:])
     return pd.DataFrame({
             "R2": [data["temperature"].corr(data["temp.mod"])**2],
             "RMSE": np.sqrt(np.mean((data["temp.mod"] - data["temperature"])**2)),
-            "NSE": 1 - np.mean((data["temp.mod"] - data["temperature"])**2) / np.std(data["temperature"])**2,
+            "NSE": nse(data["temp.mod"], data["temperature"]),
+            "AnomNSE": anom_nse,
+            "AnomNSEAdvantage": anom_nse - stat_nse,
             "Pbias": np.mean(data["temp.mod"] - data["temperature"]) / np.mean(data["temperature"])*100,
             "Bias": np.mean(data["temp.mod"] - data["temperature"]),
             "MaxMiss": data.assign(year=lambda x: x["date"].dt.year).groupby("year")[["temperature", "temp.mod"]].max().assign(maxmiss=lambda x: x["temperature"] - x["temp.mod"])["maxmiss"].max()
@@ -144,3 +170,53 @@ def kfold(data, modbuilder, parallel=0, by="id", k=10, output=None, redo=False):
     if output is not None:
         result.to_csv(output, index=False)
     return result
+
+
+def circular_season(days, values):
+    """
+    days: Series of date string, Pandas datetime, or integer day of year
+    values: whatever we're computing the seasonality of.
+    Returns (center day, seasonality index)
+    
+    Compute seasonality under circulat statistics (Fisher 1993).
+    For angle from Jan. 1:
+        S = sum(P*sin)
+        C = sum(P*cos)
+    Magnitude PR = sqrt(S^2 + C^2)
+    Angle = atan(S/C); +180 if C <0 and +360 if S < 0.  This gives average
+    time of ocurrence.
+    Concentration in time (seasonality index, IS) = PR/P total.
+    Fisher, N.I. (1993). Statistical Analysis of Circular Data. New York:
+        Cambridge University Press.  Cited in
+        Dingman, S. L. (2015). Physical Hydrology, 3rd ed.
+        Long Grove: Waveland Press, Inc.
+    """
+    # First, make days into DOY integers.
+    if days.dtype == 'int64' or days.dtype == 'int32':
+        days = days.to_numpy()
+    if days.dtype == 'O':  # string date
+        days = pd.to_datetime(days).dt.day_of_year.to_numpy()
+    else:
+        days = days.dt.day_of_year.to_numpy()
+    values = values.to_numpy()
+    # Now let's do some math.
+    dangle = (days - 1) * 2 * np.pi / 365
+    dsin = np.sin(dangle)
+    dcos = np.cos(dangle)
+    S = (dsin * values).sum()
+    C = (dcos * values).sum()
+    PR = np.sqrt(S**2 + C**2)
+    P = values.sum()
+    I = PR/P
+    # Compute offset
+    offset = 0
+    if S < 0:
+        offset = 2*np.pi
+    if C < 0:
+        offset = np.pi
+    # Get angle
+    ctr = np.arctan(S/C) + offset
+    day_ctr = ctr * 365 / (2 * np.pi) + 1
+    return (day_ctr, I)
+    
+

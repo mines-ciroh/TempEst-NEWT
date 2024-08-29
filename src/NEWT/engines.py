@@ -45,18 +45,23 @@ class ThresholdSensitivityEngine(ModEngine):
         self.coef_max = coef_max
         self.zeroit = zeroit
 
-    def from_data(data, min_cor=0.7, zeroit=True):
+    def from_data(data, min_cor=0.7, zeroit=True, use_at=False):
         """
         Create a threshold sensitivity engine from the provided data.
         data must include actemp, st_anom, and anom_atmod.
         min_cor: minimum correlation to apply an engine at all.
         zeroit: passed on to engine.
+        If use_at, try fitting against air temperature instead of mean stream
+            temperature.  Data must include "tmax".
         """
+        if use_at:  # terrible hack for testing purposes
+            data = data.drop(columns="actemp").\
+                rename(columns={"tmax": "actemp"})
         sens = analysis.get_sensitivities(data)
         best_cut = analysis.find_cutoff(sens)  # cutoff, corr, min, max
-        if best_cut["corr"] < min_cor:
+        if best_cut is None or best_cut["corr"] < min_cor:
             # act_cutoff == act_min: just returns current coefficient
-            return ThresholdSensitivityEngine(0, 0, 0, 0)
+            return ThresholdSensitivityEngine(-1, -1, -1, sens["slope"].mean())
         # Recompute max to hold for all high-temp conditions
         true_max = sens[sens["int_mean"] > best_cut["cutoff"]]["slope"].mean()
         act_min = sens["int_mean"].min()

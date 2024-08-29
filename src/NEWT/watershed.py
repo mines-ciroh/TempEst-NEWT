@@ -309,7 +309,8 @@ class Watershed(object):
                 st_anom = lambda x: x["temperature"] - x["temp.mod"]) if lin_ssn else anoms
         anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"],
                                                        at_conv, mode="full")[:-(len(at_conv) - 1)]
-        thres_eng = engines.ThresholdSensitivityEngine.from_data(anoms) if threshold_engine else None
+        thres_eng = engines.ThresholdSensitivityEngine.from_data(
+            anoms, use_at=False) if threshold_engine else None
         sol = np.linalg.lstsq(np.array(anoms[["anom_atmod"
                                               # ,"anom_hummod"
                                               ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
