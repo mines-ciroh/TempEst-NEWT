@@ -10,7 +10,7 @@ NEWT is principally developed as the calibrated component of TempEst-NEXT, which
 
 ### Installation
 
-Install from PyPI: `pip install tempest-newt`.
+Install from PyPI: `pip install tempest-newt`.  The installed module is called NEWT: `import NEWT`.
 
 ### Data Preparation
 

@@ -104,10 +104,10 @@ def perf_summary(data):
     Summarize performance.  data just needs to have temperature, temp.mod, and
     date.
     """
-    data["anom.mod"] = anomalies(data["date"], data["temp.mod"])
-    data["anom.obs"] = anomalies(data["date"], data["temperature"])
-    anom_nse = nse(data["anom.mod"], data["anom.obs"])
-    stat_nse = nse(data["anom.obs"][:-1], data["anom.obs"][1:])
+    anomod = anomalies(data["date"], data["temp.mod"])
+    anobs = anomalies(data["date"], data["temperature"])
+    anom_nse = nse(anomod, anobs)
+    stat_nse = nse(anobs[:-1], anobs[1:])
     return pd.DataFrame({
             "R2": [data["temperature"].corr(data["temp.mod"])**2],
             "RMSE": np.sqrt(np.mean((data["temp.mod"] - data["temperature"])**2)),
