@@ -9,6 +9,7 @@ import numpy as np
 from yaml import load, dump, Loader
 from datetime import timedelta
 from NEWT import engines, analysis
+from NEWT.engines import ModEngine
 
 def anomilize(data):
     data["day"] = data["date"].dt.day_of_year
@@ -21,6 +22,72 @@ def anomilize(data):
     return data
 
 
+def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
+               year_eng, year_period, climate_eng, climate_period,
+               ext_hist, history):
+    """
+    Converts watershed data to a file in a consistent format.
+    """
+    ssn = {k: float(v[0]) for k, v in ssn.to_df().items()
+           if not k in ["R2", "RMSE"]}
+    atd_str = at_day[["day", "mean_tmax"]].to_dict()
+    at_coef = float(at_coef)
+    at_conv = at_conv.tolist()
+    data = {
+        "seasonality": ssn,
+        "date": str(date),
+        "at_coef": at_coef,
+        "at_conv": at_conv,
+        "at_day": atd_str,
+        "histcol": ext_hist,
+        "history": history.to_dict(),
+        "dynamic_engine": dyn_eng.to_dict(),
+        "dynamic_period": dyn_period,
+        "year_engine": year_eng.to_dict(),
+        "year_period": year_period,
+        "climate_engine": climate_eng.to_dict(),
+        "climate_period": climate_period,
+        "ext_hist_col": ext_hist
+        }
+    return data
+
+
+# def from_file(filename, init=False, estimator=None):
+#     with open(filename) as f:
+#         coefs = load(f, Loader)
+#     ws = Watershed(
+#         rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
+#         coefs["at_coef"],
+#         pd.DataFrame(coefs["at_day"]),
+#         extra_history_columns=coefs["histcol"] if "histcol" in coefs else \
+#             []
+#         )
+#     if init:
+#         ws.initialize_run(coefs["date"])
+#     return ws
+
+def ws_from_data(coefs):
+    """
+    Generates watershed from coefficients dictionary.
+    """
+    ws = Watershed(rts.ThreeSine.from_coefs(pd.DataFrame(coefs["seasonality"])),
+                   at_coef=coefs["at_coef"],
+                   at_day=pd.DataFrame(coefs["at_day"]),
+                   at_conv=np.array(coefs["at_conv"]),
+                   dynamic_engine=ModEngine.from_dict(coefs["dynamic_engine"]),
+                   dynamic_period=coefs["dynamic_period"],
+                   year_engine=ModEngine.from_dict(coefs["year_engine"]),
+                   year_doy=coefs["year_period"],
+                   climate_engine=ModEngine.from_dict(coefs["climate_engine"]),
+                   climate_period=coefs["climate_period"],
+                   extra_history_columns=coefs["ext_hist_col"]
+                   )
+    ws.history = pd.DataFrame(coefs["history"])
+    ws.date = np.datetime64(coefs["date"])
+    return ws
+    
+
+
 class Watershed(object):
     def __init__(self, seasonality, at_coef, at_day,
                 at_conv=scipy.stats.lognorm.pdf(np.arange(0, 7), 1),
@@ -30,8 +97,6 @@ class Watershed(object):
                 year_doy=180,
                 climate_engine=None,
                 climate_period=365,
-                climate_learnrate=0,
-                climate_recency=0,
                 extra_history_columns=[]):
         """
         seasonality: a three-sine seasonality object
@@ -73,8 +138,6 @@ class Watershed(object):
         self.year_doy = year_doy
         self.climate_engine = climate_engine
         self.climate_period = climate_period
-        self.climate_learnrate = climate_learnrate
-        self.climate_recency = climate_recency
         self.period = 0
         self.date = None
         self.histcol = extra_history_columns
@@ -82,27 +145,18 @@ class Watershed(object):
     def from_file(filename, init=False, estimator=None):
         with open(filename) as f:
             coefs = load(f, Loader)
-        ws = Watershed(
-            rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
-            coefs["at_coef"],
-            pd.DataFrame(coefs["at_day"]),
-            extra_history_columns=coefs["histcol"] if "histcol" in coefs else \
-                []
-            )
+        ws = ws_from_data(coefs)
         if init:
             ws.initialize_run(coefs["date"])
         return ws
     
     def to_file(self, filename):
-        ssn = {k: v[0] for k, v in self.seasonality.to_df().items()
-               if not k in ["R2", "RMSE"]}
-        rest = {
-            "date": self.date,
-            "at_coef": self.at_coef,
-            "at_day": self.dailies[["day", "mean_tmax"]].to_dict(),
-            "histcol": self.histcol
-            }
-        data = ssn | rest
+        data = ws_to_data(self.seasonality, self.date, self.at_coef,
+                          self.at_day, self.at_conv, self.dynamic_engine,
+                          self.dynamic_period, self.year_engine,
+                          self.year_doy, self.climate_engine,
+                          self.climate_period, self.histcol,
+                          self.get_history())
         with open(filename, "w") as f:
             dump(data, f)
     
