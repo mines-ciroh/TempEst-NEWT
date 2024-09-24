@@ -39,46 +39,31 @@ def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
         "at_coef": at_coef,
         "at_conv": at_conv,
         "at_day": atd_str,
-        "histcol": ext_hist,
         "history": history.to_dict(),
-        "dynamic_engine": dyn_eng.to_dict(),
+        "dynamic_engine": dyn_eng.to_dict() if dyn_eng is not None else None,
         "dynamic_period": dyn_period,
-        "year_engine": year_eng.to_dict(),
+        "year_engine": year_eng.to_dict() if year_eng is not None else None,
         "year_period": year_period,
-        "climate_engine": climate_eng.to_dict(),
+        "climate_engine": climate_eng.to_dict() if climate_eng is not None else None,
         "climate_period": climate_period,
         "ext_hist_col": ext_hist
         }
     return data
 
 
-# def from_file(filename, init=False, estimator=None):
-#     with open(filename) as f:
-#         coefs = load(f, Loader)
-#     ws = Watershed(
-#         rts.ThreeSine.from_coefs(pd.DataFrame(coefs, index=[0])),
-#         coefs["at_coef"],
-#         pd.DataFrame(coefs["at_day"]),
-#         extra_history_columns=coefs["histcol"] if "histcol" in coefs else \
-#             []
-#         )
-#     if init:
-#         ws.initialize_run(coefs["date"])
-#     return ws
-
 def ws_from_data(coefs):
     """
     Generates watershed from coefficients dictionary.
     """
-    ws = Watershed(rts.ThreeSine.from_coefs(pd.DataFrame(coefs["seasonality"])),
+    ws = Watershed(rts.ThreeSine.from_coefs(pd.DataFrame(coefs["seasonality"], index=[0])),
                    at_coef=coefs["at_coef"],
                    at_day=pd.DataFrame(coefs["at_day"]),
                    at_conv=np.array(coefs["at_conv"]),
-                   dynamic_engine=ModEngine.from_dict(coefs["dynamic_engine"]),
+                   dynamic_engine=ModEngine.from_dict(coefs["dynamic_engine"]) if coefs["dynamic_engine"] is not None else None,
                    dynamic_period=coefs["dynamic_period"],
-                   year_engine=ModEngine.from_dict(coefs["year_engine"]),
+                   year_engine=ModEngine.from_dict(coefs["year_engine"]) if coefs["year_engine"] is not None else None,
                    year_doy=coefs["year_period"],
-                   climate_engine=ModEngine.from_dict(coefs["climate_engine"]),
+                   climate_engine=ModEngine.from_dict(coefs["climate_engine"]) if coefs["climate_engine"] is not None else None,
                    climate_period=coefs["climate_period"],
                    extra_history_columns=coefs["ext_hist_col"]
                    )
@@ -152,7 +137,7 @@ class Watershed(object):
     
     def to_file(self, filename):
         data = ws_to_data(self.seasonality, self.date, self.at_coef,
-                          self.at_day, self.at_conv, self.dynamic_engine,
+                          self.dailies, self.at_conv, self.dynamic_engine,
                           self.dynamic_period, self.year_engine,
                           self.year_doy, self.climate_engine,
                           self.climate_period, self.histcol,

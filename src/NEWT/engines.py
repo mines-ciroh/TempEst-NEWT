@@ -22,7 +22,7 @@ class ModEngine(object):
     
     def to_dict(self):
         raise NotImplementedError("ModEngine.to_dict")
-        
+
     def from_dict(d):
         name = d["engine_name"]
         args = d["args"]
@@ -56,7 +56,7 @@ class ThresholdSensitivityEngine(ModEngine):
 
     def to_dict(self):
         return {
-            "engine_name": "engines.ThresholdSensitivityEngine",
+            "engine_name": "ThresholdSensitivityEngine",
             "args": [float(self.act_min), float(self.coef_min),
                      float(self.act_cutoff), float(self.coef_max),
                      self.zeroit]}
@@ -132,7 +132,7 @@ class LinearSeasonEngine(ModEngine):
         
     def to_dict(self):
         return {
-            "engine_name": "engines.LinearSeasonEngine",
+            "engine_name": "LinearSeasonEngine",
             "args": [self.names, self.xs, self.coefs, self.start, self.until]}
     
     def from_data(data, names, xs, start, until):
@@ -190,4 +190,3 @@ class LinearSeasonEngine(ModEngine):
             "linear_ssn_start": self.start,
             "linear_ssn_until": self.until
             }
-
