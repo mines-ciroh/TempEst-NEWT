@@ -12,8 +12,6 @@ is the watershed model NEWT.
 from NEWT import Watershed
 from bmipy import Bmi
 import numpy as np
-# Uncomment once standardized coef. estimator is provided...
-# from teNext import NEXT
 
 class NextBmi(Bmi):
     """
@@ -28,7 +26,7 @@ class NextBmi(Bmi):
     _output_var_names = ("channel_water__temperature",)
     # Convenience
     swt = _output_var_names[0]
-    at = _input_var_names
+    at = _input_var_names[0]
     def __init__(self):
         self._model = None
         self._values = {}
@@ -59,15 +57,20 @@ class NextBmi(Bmi):
         self._var_loc = {self.swt: "node"}
         self._grids = self.swt
         self._grid_type = "scalar"
+        self._timestep = 0.0
+        self._temps = []
     
     def update(self):
-        self._model.step()
+        # self._model.step()
+        self._timestep += 3600
+        if self._timestep % 86400 < 1:
+            self._model.step()
         for k in self._vptrs:
             self._vptrs[k][0] = self._values[k][0]()
     
     def update_until(self, time):
-        while self._model.timestep < time:
-            self._model.step()
+        while self._timestep < time:
+            self.update()
     
     def finalize(self):
         self._model = None
@@ -106,7 +109,7 @@ class NextBmi(Bmi):
         return "node"
     
     def get_current_time(self):
-        return self._model.timestep
+        return self._timestep
     
     def get_start_time(self):
         return 0.0
@@ -118,7 +121,7 @@ class NextBmi(Bmi):
         return self._time_units
     
     def get_time_step(self):
-        return 86400.0
+        return 3600.0
     
     def get_value_ptr(self, name):
         return self._vptrs[name]
@@ -131,7 +134,11 @@ class NextBmi(Bmi):
         return self.get_value(name, dest)
     
     def set_value(self, name, src):
-        self._values[name][1](src[0])
+        val = src[0]
+        if name == self.at:
+            self._temps.append(val)
+            val = max(self._temps[-24:])  # 24-hour max temperature
+        self._values[name][1](val)
         self._vptrs[name][0] = self._values[name][0]()
         
     def set_value_at_indices(self, name, inds, src):
