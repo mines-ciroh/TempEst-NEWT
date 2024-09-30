@@ -53,8 +53,8 @@ class NextBmi(Bmi):
                             }
             self._vptrs = {self.swt: np.array([self._model.temperature]),
                             self.at: np.array([self._model.at])}
-            self._var_units = {self.swt: "C",
-                               self.at: "C",
+            self._var_units = {self.swt: "Celsius",
+                               self.at: "Celsius",
                                # self.vp: "Pa"
                                }
             self._var_loc = {self.swt: "node"}
