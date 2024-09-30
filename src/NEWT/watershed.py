@@ -73,7 +73,7 @@ def ws_from_data(coefs):
     ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
     return ws
     
-
+logalot = False
 
 class Watershed(object):
     def __init__(self, seasonality, at_coef, at_day,
@@ -182,7 +182,8 @@ class Watershed(object):
             "anom": [],
             "temp.mod": []
             } | {x: [] for x in self.histcol}
-        self.log("Initialized model run")
+        if logalot:
+            self.log("Initialized model run")
     
     def get_history(self):
         return pd.DataFrame(self.history)
@@ -249,7 +250,8 @@ class Watershed(object):
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
-        self.log("Began step")
+        if logalot:
+            self.log("Began step")
         for k in self.histcol:
             if (not k in extras) and (self.extras[k] is None):
                 raise ValueError(f"In step, must provide all specified extra data. Missing: {k}")
@@ -300,7 +302,8 @@ class Watershed(object):
             self.period % self.dynamic_period == 0):
             self.trigger_engine(self.dynamic_engine)
         self.timestep += 86400  # seconds per day
-        self.log(f"Concluded step; predicted ST: {self.temperature}")
+        if logalot:
+            self.log(f"Concluded step; predicted ST: {self.temperature}")
         # Result
         return pred
     

@@ -13,6 +13,8 @@ from NEWT import Watershed
 from bmipy import Bmi
 import numpy as np
 
+logalot = False
+
 class NextBmi(Bmi):
     """
     BMI implementation for TempEst-NEXT.
@@ -60,7 +62,8 @@ class NextBmi(Bmi):
             self._grid_type = "scalar"
             self._timestep = 0.0
             self._temps = []
-            self._model.log("Finished BMI initialization")
+            if logalot:
+                self._model.log("Finished BMI initialization")
         except Exception as e:
             self._model.log(f"Error in initialization: {e}")
     
