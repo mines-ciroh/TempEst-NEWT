@@ -49,8 +49,8 @@ class NextBmi(Bmi):
                             self.at: [self._model.get_at, self._model.set_at],
                             # self.vp: [self._model.get_vp, self._model.set_vp]
                             }
-            self._vptrs = {self.swt: [self._model.temperature],
-                            self.at: [self._model.at]}
+            self._vptrs = {self.swt: np.array([self._model.temperature]),
+                            self.at: np.array([self._model.at])}
             self._var_units = {self.swt: "C",
                                self.at: "C",
                                # self.vp: "Pa"
@@ -67,6 +67,10 @@ class NextBmi(Bmi):
     def update(self):
         # self._model.step()
         try:
+            for k in self._vptrs:
+                setter = self._values[k][1]
+                if setter is not None:
+                    setter(self._vptrs[k][0])
             self._timestep += 3600
             if self._timestep % 86400 < 1:
                 self._model.step()
@@ -110,7 +114,10 @@ class NextBmi(Bmi):
         return 8
     
     def get_var_nbytes(self, name):
-        return self.get_value_ptr(name).nbytes
+        try:
+            return self.get_value_ptr(name).nbytes
+        except Exception as e:
+            self._model.log(f"Error in get_value_ptr: {e}")
     
     def get_var_location(self, name):
         return "node"
@@ -145,7 +152,10 @@ class NextBmi(Bmi):
         if name == self.at:
             self._temps.append(val)
             val = max(self._temps[-24:])  # 24-hour max temperature
-        self._values[name][1](val)
+        if name != self.swt:
+            self._values[name][1](val)
+        else:
+            self._model.log("Warning: tried to set stream temperature.")
         self._vptrs[name][0] = self._values[name][0]()
         
     def set_value_at_indices(self, name, inds, src):
