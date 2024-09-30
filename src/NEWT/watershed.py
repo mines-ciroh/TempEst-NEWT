@@ -172,7 +172,7 @@ class Watershed(object):
         self.at = None
         self.temperature = None
         self.timestep = 0
-        self.date = start
+        self.date = pd.to_datetime(start)
         self.extras = {x: None for x in self.histcol}
         self.history = {
             "date": [],
@@ -198,7 +198,7 @@ class Watershed(object):
     def get_date(self):
         return self.date
     def set_date(self, date):
-        self.date = date
+        self.date = pd.to_datetime(date)
     def set_extra(self, key, value):
         self.extras[key] = value
     def get_extras(self):
@@ -257,7 +257,7 @@ class Watershed(object):
                 raise ValueError(f"In step, must provide all specified extra data. Missing: {k}")
         if extras is not None:
             self.extras = extras
-        self.date = self.date + timedelta(1) if date is None else date
+        self.date = self.date + timedelta(1) if date is None else pd.to_datetime(date)
         self.doy = self.date.day_of_year
         today = self.dailies[self.dailies["day"] == self.doy]
         at = at if at is not None else self.at
