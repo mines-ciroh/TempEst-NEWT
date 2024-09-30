@@ -28,6 +28,8 @@ class NextBmi(Bmi):
     swt = _output_var_names[0]
     at = _input_var_names[0]
     def __init__(self):
+        with open("/u/wy/ch/dphilippus/bins/ngen/clearcreek/log.txt", "a") as f:
+            f.write("initialized a BMI")
         self._model = None
         self._values = {}
         self._var_units = {}
