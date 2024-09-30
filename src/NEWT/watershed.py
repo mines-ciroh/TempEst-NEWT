@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from yaml import load, dump, Loader
 from datetime import timedelta
-from NEWT import engines, analysis
+from NEWT import engines
 from NEWT.engines import ModEngine
 
 def anomilize(data):
@@ -24,7 +24,7 @@ def anomilize(data):
 
 def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
                year_eng, year_period, climate_eng, climate_period,
-               ext_hist, history):
+               ext_hist, history, logfile):
     """
     Converts watershed data to a file in a consistent format.
     """
@@ -46,7 +46,8 @@ def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
         "year_period": year_period,
         "climate_engine": climate_eng.to_dict() if climate_eng is not None else None,
         "climate_period": climate_period,
-        "ext_hist_col": ext_hist
+        "ext_hist_col": ext_hist,
+        "logfile": logfile
         }
     return data
 
@@ -65,10 +66,11 @@ def ws_from_data(coefs):
                    year_doy=coefs["year_period"],
                    climate_engine=ModEngine.from_dict(coefs["climate_engine"]) if coefs["climate_engine"] is not None else None,
                    climate_period=coefs["climate_period"],
-                   extra_history_columns=coefs["ext_hist_col"]
+                   extra_history_columns=coefs["ext_hist_col"],
+                   logfile=coefs["logfile"]
                    )
     ws.history = pd.DataFrame(coefs["history"])
-    ws.date = np.datetime64(coefs["date"])
+    ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
     return ws
     
 
@@ -82,7 +84,8 @@ class Watershed(object):
                 year_doy=180,
                 climate_engine=None,
                 climate_period=365,
-                extra_history_columns=[]):
+                extra_history_columns=[],
+                logfile=None):
         """
         seasonality: a three-sine seasonality object
         at_coef: air temperature anomaly coefficient
@@ -126,6 +129,7 @@ class Watershed(object):
         self.period = 0
         self.date = None
         self.histcol = extra_history_columns
+        self.logfile = logfile
     
     def from_file(filename, init=False, estimator=None):
         with open(filename) as f:
@@ -141,7 +145,7 @@ class Watershed(object):
                           self.dynamic_period, self.year_engine,
                           self.year_doy, self.climate_engine,
                           self.climate_period, self.histcol,
-                          self.get_history())
+                          self.get_history(), self.logfile)
         with open(filename, "w") as f:
             dump(data, f)
     
@@ -156,6 +160,11 @@ class Watershed(object):
                 for k in coefs:
                     base[k] = coefs[k]
         return base
+    
+    def log(self, text, reset=False):
+        if self.logfile is not None:
+            with open(self.logfile, "w" if reset else "a") as f:
+                f.write(text + "\n")
 
     def initialize_run(self, start=None):
         # Logs allow efficient handling of a rolling anomaly
@@ -173,6 +182,7 @@ class Watershed(object):
             "anom": [],
             "temp.mod": []
             } | {x: [] for x in self.histcol}
+        self.log("Initialized model run")
     
     def get_history(self):
         return pd.DataFrame(self.history)
@@ -239,6 +249,7 @@ class Watershed(object):
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
+        self.log("Began step")
         for k in self.histcol:
             if (not k in extras) and (self.extras[k] is None):
                 raise ValueError(f"In step, must provide all specified extra data. Missing: {k}")
@@ -289,6 +300,7 @@ class Watershed(object):
             self.period % self.dynamic_period == 0):
             self.trigger_engine(self.dynamic_engine)
         self.timestep += 86400  # seconds per day
+        self.log(f"Concluded step; predicted ST: {self.temperature}")
         # Result
         return pred
     
