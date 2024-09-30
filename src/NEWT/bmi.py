@@ -87,6 +87,7 @@ class NextBmi(Bmi):
             self.update()
     
     def finalize(self):
+        self._model.get_history().to_csv("newt_bmi_run_history.csv", index=False)
         self._model = None
     
     def get_component_name(self):
