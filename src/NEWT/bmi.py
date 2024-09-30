@@ -44,29 +44,36 @@ class NextBmi(Bmi):
         """
         self._model = Watershed.from_file(filename, True)
         # self._model.initialize_run()
-        self._values = {self.swt: [self._model.get_st, None],
-                        self.at: [self._model.get_at, self._model.set_at],
-                        # self.vp: [self._model.get_vp, self._model.set_vp]
-                        }
-        self._vptrs = {self.swt: [self._model.temperature],
-                        self.at: [self._model.at]}
-        self._var_units = {self.swt: "C",
-                           self.at: "C",
-                           # self.vp: "Pa"
-                           }
-        self._var_loc = {self.swt: "node"}
-        self._grids = self.swt
-        self._grid_type = "scalar"
-        self._timestep = 0.0
-        self._temps = []
+        try:
+            self._values = {self.swt: [self._model.get_st, None],
+                            self.at: [self._model.get_at, self._model.set_at],
+                            # self.vp: [self._model.get_vp, self._model.set_vp]
+                            }
+            self._vptrs = {self.swt: [self._model.temperature],
+                            self.at: [self._model.at]}
+            self._var_units = {self.swt: "C",
+                               self.at: "C",
+                               # self.vp: "Pa"
+                               }
+            self._var_loc = {self.swt: "node"}
+            self._grids = self.swt
+            self._grid_type = "scalar"
+            self._timestep = 0.0
+            self._temps = []
+            self._model.log("Finished BMI initialization")
+        except Exception as e:
+            self._model.log(f"Error in initialization: {e}")
     
     def update(self):
         # self._model.step()
-        self._timestep += 3600
-        if self._timestep % 86400 < 1:
-            self._model.step()
-        for k in self._vptrs:
-            self._vptrs[k][0] = self._values[k][0]()
+        try:
+            self._timestep += 3600
+            if self._timestep % 86400 < 1:
+                self._model.step()
+            for k in self._vptrs:
+                self._vptrs[k][0] = self._values[k][0]()
+        except Exception as e:
+            self._model.log(f"Error in update step: {e}")
     
     def update_until(self, time):
         while self._timestep < time:
