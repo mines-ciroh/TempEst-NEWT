@@ -13,7 +13,7 @@ from NEWT import Watershed
 from bmipy import Bmi
 import numpy as np
 
-logalot = False
+logalot = True
 
 class NextBmi(Bmi):
     """
@@ -44,6 +44,8 @@ class NextBmi(Bmi):
         """
         Initialize the model.  Filename points to input file.
         """
+        if logalot:
+            print("Initializing BMI model")
         self._model = Watershed.from_file(filename, True)
         # self._model.initialize_run()
         try:

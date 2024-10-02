@@ -73,7 +73,7 @@ def ws_from_data(coefs):
     ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
     return ws
     
-logalot = True
+logalot = False
 
 class Watershed(object):
     def __init__(self, seasonality, at_coef, at_day,
