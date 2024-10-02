@@ -73,7 +73,7 @@ def ws_from_data(coefs):
     ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
     return ws
     
-logalot = False
+logalot = True
 
 class Watershed(object):
     def __init__(self, seasonality, at_coef, at_day,
@@ -132,6 +132,8 @@ class Watershed(object):
         self.logfile = logfile
     
     def from_file(filename, init=False, estimator=None):
+        if logalot:
+            print(f"Attempting to open file: {filename}")
         try:
             with open(filename) as f:
                 coefs = load(f, Loader)
