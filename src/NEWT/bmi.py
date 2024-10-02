@@ -13,7 +13,7 @@ from NEWT import Watershed
 from bmipy import Bmi
 import numpy as np
 
-logalot = True
+logalot = False
 
 class NextBmi(Bmi):
     """
