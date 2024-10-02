@@ -132,12 +132,16 @@ class Watershed(object):
         self.logfile = logfile
     
     def from_file(filename, init=False, estimator=None):
-        with open(filename) as f:
-            coefs = load(f, Loader)
-        ws = ws_from_data(coefs)
-        if init:
-            ws.initialize_run(coefs["date"])
-        return ws
+        try:
+            with open(filename) as f:
+                coefs = load(f, Loader)
+            ws = ws_from_data(coefs)
+            if init:
+                ws.initialize_run(coefs["date"])
+            return ws
+        except Exception as e:
+            with open("unspecified_log.txt", "w") as f:
+                f.write(f"Error in loading {filename}: {e}")
     
     def to_file(self, filename):
         data = ws_to_data(self.seasonality, self.date, self.at_coef,
