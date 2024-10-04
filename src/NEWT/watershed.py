@@ -76,6 +76,7 @@ def ws_from_data(coefs):
 logalot = False
 
 class Watershed(object):
+    basic_histcol = ["date", "day", "at", "actemp", "anom", "temp.mod"]
     def __init__(self, seasonality, at_coef, at_day,
                 at_conv=scipy.stats.lognorm.pdf(np.arange(0, 7), 1),
                 dynamic_engine=None,
@@ -128,7 +129,8 @@ class Watershed(object):
         self.climate_period = climate_period
         self.period = 0
         self.date = None
-        self.histcol = extra_history_columns
+        self.histcol = [c for c in extra_history_columns if not c in
+                        self.basic_histcol]
         self.logfile = logfile
     
     def from_file(filename, init=False, estimator=None):
@@ -180,14 +182,7 @@ class Watershed(object):
         self.timestep = 0
         self.date = pd.to_datetime(start)
         self.extras = {x: None for x in self.histcol}
-        self.history = {
-            "date": [],
-            "day": [],
-            "at": [],
-            "actemp": [],
-            "anom": [],
-            "temp.mod": []
-            } | {x: [] for x in self.histcol}
+        self.history = {x: [] for x in self.basic_histcol} | {x: [] for x in self.histcol}
         if logalot:
             self.log("Initialized model run")
     

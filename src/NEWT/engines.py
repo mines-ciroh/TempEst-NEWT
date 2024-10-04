@@ -71,9 +71,9 @@ class ClimateCoefficientEngine(ModEngine):
             }
     
     def apply(self, seasonality, at_coef, dailies, history, statics):
-        if self.years > 0:
+        if self.lookback > 0:
             history["year"] = history["date"].dt.year
-            history = history[history["year"] > history["year"].max() - self.years]
+            history = history[history["year"] > history["year"].max() - self.lookback]
         pdata = coef_est.preprocess(history)
         coefs = coef_est.predict_site_coefficients(self.coef_model,
                                                    pdata)
@@ -87,7 +87,7 @@ class ClimateCoefficientEngine(ModEngine):
             FallDay=coefs["FallDay"].iloc[0],
             WinterDay=coefs["WinterDay"].iloc[0]
         )
-        dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"tmax": "mean_at"})
+        dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"at": "mean_tmax"})
         return (ssn, at_coef, dailies)
     
 

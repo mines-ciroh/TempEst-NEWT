@@ -101,19 +101,24 @@ def perf_summary(data):
     Summarize performance.  data just needs to have temperature, temp.mod, and
     date.
     """
+    data["day"] = data["date"].dt.day_of_year
     anomod = anomalies(data["date"], data["temp.mod"])
     anobs = anomalies(data["date"], data["temperature"])
+    clim = data[["date", "day"]].merge(
+        data.groupby("day", as_index=False)["temperature"].mean())
     anom_nse = nse(anomod, anobs)
-    stat_nse = nse(anobs[:-1], anobs[1:])
+    clim_nse = nse(clim["temperature"], data["temperature"])
+    stat_nse = nse(data["temperature"][:-1], data["temperature"][1:])
     return pd.DataFrame({
             "R2": [data["temperature"].corr(data["temp.mod"])**2],
             "RMSE": np.sqrt(np.mean((data["temp.mod"] - data["temperature"])**2)),
             "NSE": nse(data["temp.mod"], data["temperature"]),
-            "AnomNSE": anom_nse,
-            "AnomNSEAdvantage": anom_nse - stat_nse,
+            "StationaryNSE": stat_nse,
+            "ClimatologyNSE": clim_nse,
+            "AnomalyNSE": anom_nse,
             "Pbias": np.mean(data["temp.mod"] - data["temperature"]) / np.mean(data["temperature"])*100,
             "Bias": np.mean(data["temp.mod"] - data["temperature"]),
-            "MaxMiss": data.assign(year=lambda x: x["date"].dt.year).groupby("year")[["temperature", "temp.mod"]].max().assign(maxmiss=lambda x: x["temperature"] - x["temp.mod"])["maxmiss"].max()
+            "MaxMiss": data.assign(year=lambda x: x["date"].dt.year).groupby("year")[["temperature", "temp.mod"]].max().assign(maxmiss=lambda x: abs(x["temperature"] - x["temp.mod"]))["maxmiss"].mean()
         })
 
 def kfold(data, modbuilder, parallel=0, by="id", k=10, output=None, redo=False):
