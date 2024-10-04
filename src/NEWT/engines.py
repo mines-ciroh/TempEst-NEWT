@@ -52,9 +52,15 @@ class ClimateCoefficientEngine(ModEngine):
     required_columns_training = coef_est.training_req_cols
     
     def __init__(self, coef_model, years=0, recency=0):
+        # If years is zero, then it will wait 10 years before starting to process.
+        # Otherwise, it will wait until <years> have passed.
         self.coef_model = coef_model
         self.lookback = years
         self.recency = recency
+        if self.lookback > 0:
+            self.min_duration = self.lookback
+        else:
+            self.min_duration = 10
     
     def to_dict(self):
         return {
@@ -71,24 +77,26 @@ class ClimateCoefficientEngine(ModEngine):
             }
     
     def apply(self, seasonality, at_coef, dailies, history, statics):
-        if self.lookback > 0:
-            history["year"] = history["date"].dt.year
-            history = history[history["year"] > history["year"].max() - self.lookback]
-        pdata = coef_est.preprocess(history)
-        coefs = coef_est.predict_site_coefficients(self.coef_model,
-                                                   pdata)
-        ssn = rts.ThreeSine(
-            Intercept=coefs["Intercept"].iloc[0],
-            Amplitude=coefs["Amplitude"].iloc[0],
-            SpringSummer=coefs["SpringSummer"].iloc[0],
-            FallWinter=coefs["FallWinter"].iloc[0],
-            SpringDay=coefs["SpringDay"].iloc[0],
-            SummerDay=coefs["SummerDay"].iloc[0],
-            FallDay=coefs["FallDay"].iloc[0],
-            WinterDay=coefs["WinterDay"].iloc[0]
-        )
-        dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"at": "mean_tmax"})
-        return (ssn, at_coef, dailies)
+        history["year"] = history["date"].dt.year
+        duration = history["year"].max() - history["year"].min()
+        if duration >= self.min_duration:
+            if self.lookback > 0:
+                history = history[history["year"] > history["year"].max() - self.lookback]
+            pdata = coef_est.preprocess(history)
+            coefs = coef_est.predict_site_coefficients(self.coef_model,
+                                                       pdata)
+            seasonality = rts.ThreeSine(
+                Intercept=coefs["Intercept"].iloc[0],
+                Amplitude=coefs["Amplitude"].iloc[0],
+                SpringSummer=coefs["SpringSummer"].iloc[0],
+                FallWinter=coefs["FallWinter"].iloc[0],
+                SpringDay=coefs["SpringDay"].iloc[0],
+                SummerDay=coefs["SummerDay"].iloc[0],
+                FallDay=coefs["FallDay"].iloc[0],
+                WinterDay=coefs["WinterDay"].iloc[0]
+            )
+            dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"at": "mean_tmax"})
+        return (seasonality, at_coef, dailies)
     
 
 class ThresholdSensitivityEngine(ModEngine):
