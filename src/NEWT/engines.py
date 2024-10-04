@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import rtseason as rts
 import NEWT.analysis as analysis
+import NEWT.coef_est as coef_est
 
 class ModEngine(object):
     def apply(self, seasonality, at_coef, dailies, history, statics):
@@ -45,6 +46,50 @@ def trycatch(op):
 def makenp(data):
     data = data.to_numpy()
     return np.concatenate((np.ones((data.shape[0], 1)), data), axis=1)
+
+class ClimateCoefficientEngine(ModEngine):
+    required_columns = coef_est.req_cols
+    required_columns_training = coef_est.training_req_cols
+    
+    def __init__(self, coef_model, years=0, recency=0):
+        self.coef_model = coef_model
+        self.lookback = years
+        self.recency = recency
+    
+    def to_dict(self):
+        return {
+            "engine_name": "ClimateCoefficientEngine",
+            "args": [self.coef_model, self.lookback, self.recency]}
+    
+    def from_data():
+        raise NotImplementedError("ClimateCoefficientEngine.from_data cannot be implemented.  Use TempEst-NEXT to generate ClimateCoefficientEngines.")
+    
+    def coefficients(self):
+        return {
+            "lookback": self.lookback,
+            "recency": self.recency
+            }
+    
+    def apply(self, seasonality, at_coef, dailies, history, statics):
+        if self.years > 0:
+            history["year"] = history["date"].dt.year
+            history = history[history["year"] > history["year"].max() - self.years]
+        pdata = coef_est.preprocess(history)
+        coefs = coef_est.predict_site_coefficients(self.coef_model,
+                                                   pdata)
+        ssn = rts.ThreeSine(
+            Intercept=coefs["Intercept"].iloc[0],
+            Amplitude=coefs["Amplitude"].iloc[0],
+            SpringSummer=coefs["SpringSummer"].iloc[0],
+            FallWinter=coefs["FallWinter"].iloc[0],
+            SpringDay=coefs["SpringDay"].iloc[0],
+            SummerDay=coefs["SummerDay"].iloc[0],
+            FallDay=coefs["FallDay"].iloc[0],
+            WinterDay=coefs["WinterDay"].iloc[0]
+        )
+        dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"tmax": "mean_at"})
+        return (ssn, at_coef, dailies)
+    
 
 class ThresholdSensitivityEngine(ModEngine):
     def __init__(self, act_min, coef_min, act_cutoff, coef_max, zeroit=True):
