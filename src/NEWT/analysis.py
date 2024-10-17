@@ -27,7 +27,13 @@ def get_sensitivity(data):
     x = data["anom_atmod"].to_numpy()
     x = np.array([np.ones(x.shape), x]).transpose()
     y = data["st_anom"].to_numpy()
-    return np.linalg.lstsq(x, y, rcond=None)[0][1]
+    sens = np.linalg.lstsq(x, y, rcond=None)[0][1]
+    # Apply some checks to make sure sensitivity is sane.  Things get... weird otherwise.
+    if sens > 1:
+        return 1.0
+    if sens < 0:
+        return 0.0
+    return sens
 
 def get_sensitivities(data):
     """
