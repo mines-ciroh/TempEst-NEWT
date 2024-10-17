@@ -72,8 +72,8 @@ class ClimateCoefficientEngine(ModEngine):
     
     def coefficients(self):
         return {
-            "lookback": self.lookback,
-            "recency": self.recency
+            "climate_lookback": self.lookback,
+            "climate_recency": self.recency
             }
     
     def apply(self, seasonality, at_coef, dailies, history, statics):
