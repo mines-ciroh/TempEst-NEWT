@@ -95,7 +95,9 @@ class ClimateCoefficientEngine(ModEngine):
                 FallDay=coefs["FallDay"].iloc[0],
                 WinterDay=coefs["WinterDay"].iloc[0]
             )
-            dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"at": "mean_tmax"})
+            n_dailies = history.groupby(["day"], as_index=False)["at"].mean().rename(columns={"at": "mean_tmax"})
+            o_dailies = dailies[-dailies["day"].isin(n_dailies["day"])]
+            dailies = pd.concat([n_dailies, o_dailies])
         return (seasonality, at_coef, dailies)
     
 
