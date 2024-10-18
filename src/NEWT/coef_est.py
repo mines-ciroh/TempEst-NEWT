@@ -38,7 +38,8 @@ def preprocess(data):
         inp_cols + ["frozen", "cold_prcp"]].mean().merge(
         data.groupby("id", as_index=False)[["prcp", "srad", "vp"]].std(),
         on="id", suffixes=["", "_sd"]).merge(
-            data.groupby("id", as_index=False).apply(ssn_df, include_groups=False),
+            # Why different grouping?  apply was dropping id
+            data.groupby("id").apply(ssn_df, include_groups=False).reset_index().drop(columns="level_1"),
             on="id").merge(
                 data.groupby("id", as_index=False).apply(
                     lambda x: statics.fit_simple_daily(x, "tmax", True).\
