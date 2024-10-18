@@ -39,12 +39,12 @@ def preprocess(data):
         data.groupby("id", as_index=False)[["prcp", "srad", "vp"]].std(),
         on="id", suffixes=["", "_sd"]).merge(
             # Why different grouping?  apply was dropping id
-            data.groupby("id").apply(ssn_df, include_groups=False).reset_index().drop(columns="level_1"),
+            data.groupby("id").apply(ssn_df, include_groups=False).reset_index(),
             on="id").merge(
                 data.groupby("id").apply(
                     lambda x: statics.fit_simple_daily(x, "tmax", True).\
                         assign(tamp = lambda x: np.sqrt(x["ksin"]**2 + x["kcos"]**2)),
-                            include_groups=False).reset_index().drop(columns="level_1"),
+                            include_groups=False).reset_index(),
                 on="id"
                 )
     return predictors
