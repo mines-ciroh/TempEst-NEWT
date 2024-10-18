@@ -35,7 +35,7 @@ def preprocess(data):
     data["frozen"] = data["tmax"] < 0    
     data["cold_prcp"] = data["prcp"] * data["frozen"]
     predictors = data.groupby("id", as_index=False)[
-        req_cols + ["frozen", "cold_prcp"]].mean().merge(
+        inp_cols + ["frozen", "cold_prcp"]].mean().merge(
         data.groupby("id", as_index=False)[["prcp", "srad", "vp"]].std(),
         on="id", suffixes=["", "_sd"]).merge(
             data.groupby("id", as_index=False).apply(ssn_df, include_groups=False),
