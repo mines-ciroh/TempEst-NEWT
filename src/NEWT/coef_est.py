@@ -38,9 +38,9 @@ def preprocess(data):
         inp_cols + ["frozen", "cold_prcp"]].mean().merge(
         data.groupby("id", as_index=False)[["prcp", "srad", "vp"]].std(),
         on="id", suffixes=["", "_sd"]).merge(
-            data.groupby("id").apply(ssn_df, include_groups=False),
+            data.groupby("id", as_index=False).apply(ssn_df, include_groups=False),
             on="id").merge(
-                data.groupby("id").apply(
+                data.groupby("id", as_index=False).apply(
                     lambda x: statics.fit_simple_daily(x, "tmax", True).\
                         assign(tamp = lambda x: np.sqrt(x["ksin"]**2 + x["kcos"]**2))),
                 on="id"
