@@ -25,10 +25,12 @@ def ssn_df(data):
     ctr, I = analysis.circular_season(data["date"], data["prcp"])
     return pd.DataFrame({"ssn_phi": [ctr], "ssn_index": I})
 
-def preprocess(data):
+def preprocess(data, allow_no_id=True):
     """
     Convert raw input data into appropriate format, with all required covariates.
     """
+    if not "id" in data.columns and allow_no_id:
+        data["id"] = "null"
     if not all([col in data.columns for col in req_cols]):
         missing = [col for col in req_cols if not col in data.columns]
         raise ValueError(f"Missing columns in input data; required: {req_cols}; missing: {missing}")
