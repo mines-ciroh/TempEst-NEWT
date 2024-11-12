@@ -1,0 +1,30 @@
+{
+    "global": {
+        "formulations": [
+		{
+			"name": "bmi_python",
+			"params": {
+				"model_type_name": "NEWT",
+				"uses_forcing_file": false, 
+				"init_config": "./newtconf/wb-1561617.yaml", 
+				"main_output_variable": "channel_water__temperature", 
+				"python_type": "NEWT.NextBmi", 
+				"variables_names_map": { 
+					"land_surface_air__temperature": "TMP_2maboveground" 
+				} 
+			} 
+		} 
+	],
+        "forcing": {
+            "file_pattern": ".*{{id}}.*.csv",
+            "path": "./forcings/06719505/NWM_AnA/postproc/all_forc/",
+            "provider": "CsvPerFeature"
+        }
+    },
+    "time": {
+        "start_time": "2024-02-15 13:00:00",
+        "end_time": "2024-04-14 16:00:00",
+        "output_interval": 3600
+    },
+    "output_root": "./outputs/"
+}
