@@ -6,6 +6,7 @@ import warnings
 bp = "/scratch/dphilippus/notebooks/reach_analysis/"
 bp_inpcache = bp + "input_cache/"
 
+skipfile = bp + "skiplist.txt" # list of sites that have been tried
 sitefile = bp + "sitelist.txt"
 if os.path.exists(sitefile):
     with open(sitefile, "r") as sf:
@@ -23,7 +24,13 @@ rem_sites = sites
 if os.path.exists(reach_coefs):
     existing = pd.read_csv(reach_coefs, dtype={"id": "str"})["id"].unique()
     rem_sites = [s for s in sites if not s in existing]
-for site in sites:
+if os.path.exists(skipfile):
+    with open(skipfile, "r") as sf:
+        tried = [x.strip() for x in list(sf)]
+    rem_sites = [s for s in rem_sites if not s in tried]
+for site in rem_sites:
+    with open(skipfile, "a") as sf:
+        sf.write(site + "\n")
     tries = 0
     inp = None
     inpfn = full_cache + site + ".csv"
