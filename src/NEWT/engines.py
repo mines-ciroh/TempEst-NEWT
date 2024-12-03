@@ -48,7 +48,7 @@ def makenp(data):
     return np.concatenate((np.ones((data.shape[0], 1)), data), axis=1)
 
 class ClimateCoefficientEngine(ModEngine):
-    required_columns = coef_est.req_cols
+    required_columns = coef_est.inp_cols
     required_columns_training = coef_est.training_req_cols
     
     def __init__(self, coef_model, years=0, recency=0):
