@@ -9,6 +9,7 @@ Contains functions for generating static estimates.
 
 import pandas as pd
 import numpy as np
+import warnings
 
 
 def fitrun_sd(data, name):
@@ -31,14 +32,21 @@ def simple_daily(name, intercept, ksin, kcos):
         })
 
 
-def fit_simple_daily(data, name, to_df=False):
+def fit_simple_daily(data, name, to_df=False, crash=False):
     """
     Use OLS to fit simple-daily coefficients.  data must have day and name.
     """
     days = data["day"] * 2 * np.pi / 365
     y = data[name].to_numpy()
     x = np.array([np.ones(len(days)), np.sin(days), np.cos(days)]).transpose()
-    sol = np.linalg.lstsq(x, y, None)[0]
+    try:
+        sol = np.linalg.lstsq(x, y, None)[0]
+    except Exception as e:
+        if crash:
+            raise e
+        else:
+            warnings.warn(f"fit_simple_daily: {e}")
+            sol = np.array([y.mean(), 0, 0])
     if to_df:
         return pd.DataFrame({"intercept": [sol[0]], "ksin": sol[1], "kcos": sol[2]})
     else:
