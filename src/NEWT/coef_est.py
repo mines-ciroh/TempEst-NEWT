@@ -53,6 +53,20 @@ def preprocess(data, allow_no_id=True):
     return predictors
 
 var_sets = [
+    {"name": "Intercept", "vars": ['intercept', 'cold_prcp', 'frozen', 'area', 'elev_min'], "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
+    {"name": "Amplitude", "vars": ['frozen', 'water', 'forest', 'area', 'elev', 'elev_min', 'prcp_sd', 'vp', 'ssn_phi', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 50},
+    {"name": "SpringSummer", "vars": ['intercept', 'prcp', 'cold_prcp', 'frozen', 'water', 'elev', 'elev_min', 'prcp_sd', 'srad_sd', 'vp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 10},
+    {"name": "FallWinter", "vars": ['intercept', 'frozen', 'srad', 'water', 'forest', 'elev', 'slope', 'lat', 'lon', 'vp', 'ssn_index', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 10},
+    {"name": "SpringDay", "vars": ['intercept', 'elev', 'lat', 'lon', 'ssn_phi', 'ssn_index', 'tamp', 'canopy'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7), "lam": 10},
+    {"name": "SummerDay", "vars": ['prcp', 'cold_prcp', 'frozen', 'wetland', 'ice_snow', 'elev', 'lat', 'lon', 'prcp_sd', 'ssn_index', 'canopy'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10), "lam": 10},
+    {"name": "FallDay", "vars": ['srad', 'water', 'developed', 'forest', 'wetland', 'ice_snow', 'elev_min', 'lat', 'lon', 'flowdir'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 10},
+    {"name": "WinterDay", "vars": ['frozen', 'water', 'forest', 'wetland', 'srad_sd', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5), "lam": 10},
+    {"name": "threshold_coef_max", "vars": ['Intercept', 'intercept', 'frozen', 'srad', 'water', 'area', 'lat', 'lon', 'ssn_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 10},
+    {"name": "threshold_coef_min", "vars": ['intercept', 'frozen', 'srad', 'elev', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
+    {"name": "threshold_act_cutoff", "vars": ['frozen', 'elev_min', 'lat', 'lon', 'srad_sd', 'canopy', 'flowdir'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6), "lam": 10},
+]
+
+old_var_sets = [
     {"name": "Intercept",
      "vars": ['intercept', 'cold_prcp', 'frozen', 'area', 'elev_min'],
      "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
