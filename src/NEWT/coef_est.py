@@ -22,9 +22,11 @@ inp_cols = ["tmax", "prcp", "srad", "vp",
 req_cols = inp_cols + ["id"]
 training_req_cols = req_cols + ["temperature"]
 
-def ssn_df(data):
-    ctr, I = analysis.circular_season(data["date"], data["prcp"])
-    return pd.DataFrame({"ssn_phi": [ctr], "ssn_index": I})
+def ssn_df(col):
+    def f(data):
+        ctr, I = analysis.circular_season(data["date"], data[col])
+        return pd.DataFrame({col + "_phi": [ctr], col + "_index": I})
+    return f
 
 def preprocess(data, allow_no_id=True):
     """
@@ -42,12 +44,9 @@ def preprocess(data, allow_no_id=True):
         data.groupby("id", as_index=False)[["prcp", "srad", "vp"]].std(),
         on="id", suffixes=["", "_sd"]).merge(
             # Why different grouping?  apply was dropping id
-            data.groupby("id").apply(ssn_df, include_groups=False).reset_index(),
+            data.groupby("id").apply(ssn_df("prcp"), include_groups=False).reset_index(),
             on="id").merge(
-                data.groupby("id").apply(
-                    lambda x: statics.fit_simple_daily(x, "tmax", True).\
-                        assign(tamp = lambda x: np.sqrt(x["ksin"]**2 + x["kcos"]**2)),
-                            include_groups=False).reset_index(),
+                data.groupby("id").apply(ssn_df("tmax"), include_groups=False).reset_index(),
                 on="id"
                 )
     return predictors
