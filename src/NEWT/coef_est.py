@@ -7,7 +7,7 @@ Created on Wed Sep 18 11:03:40 2024
 This file handles data preprocessing and coefficient estimation.
 """
 
-from pygam import LinearGAM, s
+from pygam import LinearGAM, s, l
 import pandas as pd
 import numpy as np
 from NEWT import analysis, statics
@@ -98,21 +98,29 @@ def build_model_from_data(tr_data):
     which will be converted through PCA.
     """
     vars_local = var_sets.copy()
+    X = tr_data.drop(columns=col_order)
+    Y = tr_data[["id"] + col_order].set_index("id")
+    Y = (Y - offset) / scale  # normalize scale
+    Y = Y @ np.transpose(pca_components)
+    Y.columns = coef_names
     for vs in vars_local:
-        vs["gam"] = LinearGAM(vs["eq"], lam=vs["lam"]).fit(tr_data[vs["vars"]], tr_data[vs["name"]])
+        vs["gam"] = LinearGAM(vs["eq"], lam=vs["lam"]).fit(X[vs["vars"]], Y[vs["name"]])
     return vars_local
 
 
 def predict_site_coefficients(model, data):
     """
     Predicts model coefficients using the provided (pre-processed) data for
-    a specific site.
+    a specific site.  Then invert PCA to produce NEWT coefficients.
     """
     predictor = lambda cols, gam, ws: gam.predict(ws[cols])[0]
-    statics = data
-    for vs in model:  # Essential: sensitivity stuff is LAST - it uses Intercept, Amplitude
-        statics[vs["name"]] = predictor(vs["vars"], vs["gam"], statics)
-    return statics[coef_names]
+    pcaed = {}
+    for vs in model:
+        pcaed[vs["name"]] = predictor(vs["vars"], vs["gam"], data)
+    pcaed = pd.DataFrame(pcaed, index=[0])[coef_names]  # ensure correct order
+    inv = pcaed @ pca_components
+    inv.columns = col_order
+    return inv * scale + offset
 
 
 def predict_all_coefficients(model, data):
