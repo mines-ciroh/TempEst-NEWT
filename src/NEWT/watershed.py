@@ -12,11 +12,12 @@ from NEWT import engines
 from NEWT.engines import ModEngine
 import pygam
 
-def anomilize(data):
+def anomilize(data, obs=True):
     data["day"] = data["date"].dt.day_of_year
-    data = data.merge(rts.ThreeSine.from_data(data[["day", "temperature"]]
-                                              ).generate_ts(), on="day")  # adds `actemp`
-    data["st_anom"] = data["temperature"] - data["actemp"]
+    if obs:
+        data = data.merge(rts.ThreeSine.from_data(data[["day", "temperature"]]
+                                                  ).generate_ts(), on="day")  # adds `actemp`
+        data["st_anom"] = data["temperature"] - data["actemp"]
     # data["stm_anom"] = data["temperature.max"] - data["actemp"]
     data = data.merge(data.groupby("day")["tmax"].mean().rename("tmax_day"), on="day")
     data["at_anom"] = data["tmax"] - data["tmax_day"]
@@ -343,7 +344,7 @@ class Watershed(object):
         # return data.merge(res, on="date")
         data = data.copy()
         data["day"] = data["date"].dt.day_of_year
-        anoms = anomilize(data)
+        anoms = anomilize(data, obs=False)
         data = data.merge(self.ssn_timeseries[["day", "actemp"]], on="day", how="left").merge(anoms[["date", "at_anom"]], on="date", how="left")
         data["at_anom"] = scipy.signal.fftconvolve(data["at_anom"], self.at_conv, mode="full")[:-(len(self.at_conv) - 1)] * self.at_coef
         data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
