@@ -52,69 +52,54 @@ def preprocess(data, allow_no_id=True):
     return predictors
 
 var_sets = [
-    {"name": "Intercept", "vars": ['intercept', 'cold_prcp', 'frozen', 'area', 'elev_min'], "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
-    {"name": "Amplitude", "vars": ['frozen', 'water', 'forest', 'area', 'elev', 'elev_min', 'prcp_sd', 'vp', 'ssn_phi', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 50},
-    {"name": "SpringSummer", "vars": ['intercept', 'prcp', 'cold_prcp', 'frozen', 'water', 'elev', 'elev_min', 'prcp_sd', 'srad_sd', 'vp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 10},
-    {"name": "FallWinter", "vars": ['intercept', 'frozen', 'srad', 'water', 'forest', 'elev', 'slope', 'lat', 'lon', 'vp', 'ssn_index', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 10},
-    {"name": "SpringDay", "vars": ['intercept', 'elev', 'lat', 'lon', 'ssn_phi', 'ssn_index', 'tamp', 'canopy'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7), "lam": 10},
-    {"name": "SummerDay", "vars": ['prcp', 'cold_prcp', 'frozen', 'wetland', 'ice_snow', 'elev', 'lat', 'lon', 'prcp_sd', 'ssn_index', 'canopy'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10), "lam": 10},
-    {"name": "FallDay", "vars": ['srad', 'water', 'developed', 'forest', 'wetland', 'ice_snow', 'elev_min', 'lat', 'lon', 'flowdir'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 10},
-    {"name": "WinterDay", "vars": ['frozen', 'water', 'forest', 'wetland', 'srad_sd', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5), "lam": 10},
-    {"name": "threshold_coef_max", "vars": ['Intercept', 'intercept', 'frozen', 'srad', 'water', 'area', 'lat', 'lon', 'ssn_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 10},
-    {"name": "threshold_coef_min", "vars": ['intercept', 'frozen', 'srad', 'elev', 'tamp'], "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
-    {"name": "threshold_act_cutoff", "vars": ['frozen', 'elev_min', 'lat', 'lon', 'srad_sd', 'canopy', 'flowdir'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6), "lam": 10},
+    {"name": "PCA0", "vars": ['tmax', 'elev', 'forest', 'wetland', 'water', 'cold_prcp', 'vp_sd', 'tmax_phi'], "eq": s(0) + s(1) + l(2) + s(3) + s(4) + l(5) + s(6) + l(7), "lam": 3},
+    {"name": "PCA1", "vars": ['srad', 'vp', 'elev_min', 'elev', 'slope', 'forest', 'wetland', 'ice_snow', 'water', 'frozen', 'prcp_sd', 'vp_sd', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + l(5) + s(6) + s(7) + s(8) + s(9) + l(10) + l(11) + s(12) + l(13), "lam": 3},
+    {"name": "PCA2", "vars": ['elev_min', 'elev', 'forest', 'wetland', 'water', 'canopy', 'frozen', 'cold_prcp', 'vp_sd', 'prcp_phi', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10), "lam": 3},
+    {"name": "PCA3", "vars": ['tmax', 'prcp', 'srad', 'vp', 'elev_min', 'elev', 'forest', 'ice_snow', 'water', 'prcp_sd', 'srad_sd', 'vp_sd', 'prcp_phi', 'prcp_index'], "eq": s(0) + l(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12) + s(13), "lam": 0.3},
+    {"name": "PCA4", "vars": ['prcp', 'area', 'elev_min', 'elev', 'slope', 'wetland', 'developed', 'water', 'lat', 'lon', 'frozen', 'cold_prcp', 'prcp_sd', 'vp_sd', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12) + s(13) + s(14), "lam": 1},
+    {"name": "PCA5", "vars": ['tmax', 'vp', 'elev', 'wetland', 'ice_snow', 'water', 'lon', 'frozen', 'cold_prcp', 'prcp_phi', 'prcp_index', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 10},
+    {"name": "PCA6", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'slope', 'forest', 'water', 'canopy', 'frozen', 'prcp_sd', 'vp_sd', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 10},
+    {"name": "PCA7", "vars": ['tmax', 'vp', 'area', 'elev_min', 'elev', 'forest', 'developed', 'lat', 'vp_sd'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 2},
+    {"name": "PCA8", "vars": ['tmax', 'prcp', 'vp', 'area', 'elev_min', 'elev', 'slope', 'wetland', 'ice_snow', 'frozen', 'prcp_sd', 'vp_sd', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 1},
 ]
 
-old_var_sets = [
-    {"name": "Intercept",
-     "vars": ['intercept', 'cold_prcp', 'frozen', 'area', 'elev_min'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
-    {"name": "Amplitude",
-     "vars": ['frozen', 'water', 'forest', 'area', 'elev', 'elev_min', 'prcp_sd', 'vp_sd', 'ssn_phi', 'tamp'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 50},
-    {"name": "SpringSummer",
-     "vars": ['intercept', 'prcp', 'cold_prcp', 'frozen', 'water', 'elev', 'elev_min', 'prcp_sd', 'srad_sd', 'vp_sd'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 10},
-    {"name": "FallWinter",
-     "vars": ['intercept', 'frozen', 'srad', 'water', 'forest', 'elev', 'slope', 'lat', 'lon', 'vp_sd', 'ssn_phi', 'ssn_index', 'tamp'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 10},
-    {"name": "SpringDay",
-     "vars": ['intercept', 'elev', 'lat', 'lon', 'ssn_phi', 'ssn_index', 'tamp'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6), "lam": 10},
-    {"name": "SummerDay",
-     "vars": ['prcp', 'cold_prcp', 'frozen', 'wetland', 'ice_snow', 'elev', 'lat', 'lon', 'prcp_sd', 'srad_sd', 'vp_sd', 'ssn_index', 'tamp'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 10},
-    {"name": "FallDay",
-     "vars": ['srad', 'water', 'developed', 'forest', 'wetland', 'ice_snow', 'elev_min', 'lat', 'lon'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 10},
-    {"name": "WinterDay",
-     "vars": ['frozen', 'water', 'forest', 'wetland', 'srad_sd', 'tamp'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5), "lam": 10},
-    {"name": "threshold_coef_max",
-     "vars": ['Intercept', 'intercept', 'frozen', 'srad', 'water', 'area', 'lat', 'lon', 'ssn_index'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 10},
-    {"name": "threshold_coef_min",
-     "vars": ['intercept', 'frozen', 'srad', 'elev', 'tamp'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
-    {"name": "threshold_act_cutoff",
-     "vars": ['frozen', 'elev_min', 'lat', 'lon', 'srad_sd'],
-     "eq": s(0) + s(1) + s(2) + s(3) + s(4), "lam": 10},
-]
+coef_names = ["PCA" + str(i) for i in range(len(var_sets))]
 
-coef_names = ["Intercept", "Amplitude", "SpringSummer", "FallWinter", "SpringDay", "SummerDay", "FallDay", "WinterDay",
-         "threshold_coef_max", "threshold_coef_min", "threshold_act_cutoff"
-        ]
+col_order = ['Intercept', 'Amplitude', 'FallDay', 'WinterDay', 'SpringDay',
+       'SummerDay', 'SpringSummer', 'FallWinter', 'sensitivity']
+pca_components = np.array([[-0.3635536 , -0.36253655,  0.18978457, -0.4401217 , -0.24528224,
+         0.21700805,  0.38140546, -0.3270315 , -0.38339944],
+       [ 0.38491387, -0.29840726,  0.46560378,  0.12243858,  0.37358605,
+         0.43343509, -0.16075314, -0.381675  ,  0.17907109],
+       [ 0.21515426,  0.42568867,  0.14601904, -0.32076195, -0.53292759,
+         0.31257888,  0.12651994, -0.02602839,  0.49988585],
+       [-0.13209679,  0.1202627 , -0.36689606,  0.14785714,  0.42261061,
+         0.43907167,  0.63080335,  0.10279969,  0.17818129],
+       [-0.07619769, -0.26799642,  0.40814928,  0.20224315, -0.03685127,
+        -0.52885627,  0.4819317 ,  0.06431149,  0.44434513],
+       [-0.22202771,  0.01563487, -0.361087  ,  0.40879354, -0.24807321,
+        -0.06783746, -0.08212493, -0.7319151 ,  0.21065805],
+       [ 0.35877293, -0.61655974, -0.53625048, -0.33023217, -0.08368292,
+        -0.06183943, -0.03335436,  0.0757308 ,  0.27720677],
+       [-0.47126455,  0.1246728 ,  0.0134238 , -0.52115533,  0.45438736,
+        -0.15212244, -0.28078702, -0.14495279,  0.40139952],
+       [-0.5000185 , -0.34072077,  0.08090875,  0.27907185, -0.24756717,
+         0.40409877, -0.3095345 ,  0.4117611 ,  0.24396599]])
+offset = pd.Series([12.740452585874603, 8.88225678976997, 326.75461454940285, 66.92073832790444, 154.07057546145495, 217.70684039087948, 0.7392294811845936, 1.39835333783497, 0.6101532876129115],
+                   index=col_order)
+scale = pd.Series([3.9935065545919537, 2.7232799140867754, 15.606734293670241, 32.47165509597058, 21.642058805538785, 17.322166212360017, 0.9551794545253263, 0.9203378017283892, 0.1661541252404621],
+                  index=col_order)
+
 
 
 def build_model_from_data(tr_data):
     """
-    Prepares a coefficient estimation model from the provided training data.
+    Prepares a coefficient estimation model from the provided training data.  Training data is assumed to have coefficients listed in col_order,
+    which will be converted through PCA.
     """
     vars_local = var_sets.copy()
     for vs in vars_local:
-        cd = tr_data if not vs["name"] in ["threshold_coef_min", "threshold_act_cutoff"] else \
-            tr_data[tr_data["threshold_act_cutoff"] > -1]
-        vs["gam"] = LinearGAM(vs["eq"], lam=vs["lam"]).fit(cd[vs["vars"]], cd[vs["name"]])
+        vs["gam"] = LinearGAM(vs["eq"], lam=vs["lam"]).fit(tr_data[vs["vars"]], tr_data[vs["name"]])
     return vars_local
 
 
