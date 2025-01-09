@@ -286,7 +286,7 @@ class Watershed(object):
         at_anom = np.convolve(self.at_log, self.at_conv, mode="valid")[-1]
         anom = at_anom * self.at_coef
         if self.anomgam is not None:
-            anom = anomgam.predict(np.array([[ssn, anom]]))[0]
+            anom = self.anomgam.predict(np.array([[ssn, anom]]))[0]
         pred = ssn + anom
         pred = pred if pred >= 0 else 0
         self.temperature = pred
@@ -365,6 +365,8 @@ class Watershed(object):
                                       names, xs, start, until) if
             lin_ssn else None)
         data["day"] = data["date"].dt.day_of_year
+        if len(data["day"].unique()) < 181:
+            return None
         anoms = anomilize(data)
         at_day = data.groupby(["day"], as_index=False)["tmax"].mean().rename(columns={"tmax": "mean_tmax"})
         ssn = rts.ThreeSine.from_data(data[["day", "temperature"]])
@@ -384,7 +386,7 @@ class Watershed(object):
                                               ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
         at_coef = sol[0]
         if anomgam is None and use_anomgam:
-            X = anoms[["actemp", "anom_atmod"]]
+            X = anoms[["actemp", "anom_atmod"]].copy()
             X["anom_atmod"] *= at_coef
             y = anoms["st_anom"]
             anomgam = pygam.LinearGAM(pygam.te(0, 1)).fit(X, y)
