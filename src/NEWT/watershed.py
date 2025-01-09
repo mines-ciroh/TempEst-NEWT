@@ -10,6 +10,7 @@ from yaml import load, dump, Loader
 from datetime import timedelta
 from NEWT import engines
 from NEWT.engines import ModEngine
+import pygam
 
 def anomilize(data):
     data["day"] = data["date"].dt.day_of_year
@@ -24,7 +25,7 @@ def anomilize(data):
 
 def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
                year_eng, year_period, climate_eng, climate_period,
-               ext_hist, history, logfile):
+               ext_hist, history, logfile, anomgam):
     """
     Converts watershed data to a file in a consistent format.
     """
@@ -47,7 +48,8 @@ def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
         "climate_engine": climate_eng.to_dict() if climate_eng is not None else None,
         "climate_period": climate_period,
         "ext_hist_col": ext_hist,
-        "logfile": logfile
+        "logfile": logfile,
+        "anomgam": anomgam
         }
     return data
 
@@ -67,7 +69,8 @@ def ws_from_data(coefs):
                    climate_engine=ModEngine.from_dict(coefs["climate_engine"]) if coefs["climate_engine"] is not None else None,
                    climate_period=coefs["climate_period"],
                    extra_history_columns=coefs["ext_hist_col"],
-                   logfile=coefs["logfile"]
+                   logfile=coefs["logfile"],
+                   anomgam=coefs["anomgam"]
                    )
     ws.history = pd.DataFrame(coefs["history"])
     ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
@@ -78,7 +81,7 @@ logalot = False
 class Watershed(object):
     basic_histcol = ["date", "day", "at", "actemp", "anom", "temp.mod"]
     def __init__(self, seasonality, at_coef, at_day,
-                at_conv=scipy.stats.lognorm.pdf(np.arange(0, 7), 1),
+                at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
                 dynamic_engine=None,
                 dynamic_period=1,
                 year_engine=None,
@@ -86,7 +89,8 @@ class Watershed(object):
                 climate_engine=None,
                 climate_period=365,
                 extra_history_columns=[],
-                logfile=None):
+                logfile=None,
+                anomgam=None):
         """
         seasonality: a three-sine seasonality object
         at_coef: air temperature anomaly coefficient
@@ -110,6 +114,9 @@ class Watershed(object):
             history (e.g., for use by modification engines).  All columns
             specified must be provided for each step or specified through
             setters.
+        anomgam: a trained GAM that takes seasonal temperature and
+            (smoothed + weighted) anomaly to predict adjusted ST anomaly.
+            If not provided, adjustment will not be applied.
         """
         self.seasonality = seasonality
         self.ssn_timeseries = seasonality.generate_ts()  # day, actemp
@@ -132,6 +139,7 @@ class Watershed(object):
         self.histcol = [c for c in extra_history_columns if not c in
                         self.basic_histcol]
         self.logfile = logfile
+        self.anomgam = anomgam
     
     def from_file(filename, init=False, estimator=None):
         if logalot:
@@ -153,7 +161,8 @@ class Watershed(object):
                           self.dynamic_period, self.year_engine,
                           self.year_doy, self.climate_engine,
                           self.climate_period, self.histcol,
-                          self.get_history(), self.logfile)
+                          self.get_history(), self.logfile,
+                          self.anomgam)
         with open(filename, "w") as f:
             dump(data, f)
     
@@ -276,6 +285,8 @@ class Watershed(object):
             self.ssn_timeseries["day"] == self.doy].iloc[0]
         at_anom = np.convolve(self.at_log, self.at_conv, mode="valid")[-1]
         anom = at_anom * self.at_coef
+        if self.anomgam is not None:
+            anom = anomgam.predict(np.array([[ssn, anom]]))[0]
         pred = ssn + anom
         pred = pred if pred >= 0 else 0
         self.temperature = pred
@@ -331,14 +342,16 @@ class Watershed(object):
         return data.merge(res, on="date")
 
     def from_data(data,
-                  threshold_engine=True,
+                  threshold_engine=False,
                   lin_ssn=False,
+                  anomgam=None,
                   names=["Intercept", "Amplitude", "SummerDay"],
                   xs=["at"],
                   start=330,
                   until=30,
-                  at_conv=scipy.stats.lognorm.pdf(np.arange(0, 7), 1),
-                  extra_history_columns=[]):
+                  at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
+                  extra_history_columns=[],
+                  use_anomgam=True):
         """
         Train a watershed model from data.
         Requires columns date, temperature, tmax
@@ -370,7 +383,13 @@ class Watershed(object):
                                               # ,"anom_hummod"
                                               ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
         at_coef = sol[0]
+        if anomgam is None and use_anomgam:
+            X = anoms[["actemp", "anom_atmod"]]
+            X["anom_atmod"] *= at_coef
+            y = anoms["st_anom"]
+            anomgam = pygam.LinearGAM(pygam.te(0, 1)).fit(X, y)
         return Watershed(ssn, at_coef, at_day, at_conv,
                          year_engine=linear_ssn, year_doy=until,
                          dynamic_engine=thres_eng, dynamic_period=7,
-                         extra_history_columns=extra_history_columns)
+                         extra_history_columns=extra_history_columns,
+                         anomgam=anomgam)

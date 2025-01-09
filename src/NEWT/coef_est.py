@@ -66,7 +66,7 @@ var_sets = [
 coef_names = ["PCA" + str(i) for i in range(len(var_sets))]
 
 col_order = ['Intercept', 'Amplitude', 'FallDay', 'WinterDay', 'SpringDay',
-       'SummerDay', 'SpringSummer', 'FallWinter', 'sensitivity']
+       'SummerDay', 'SpringSummer', 'FallWinter', 'at_coef']
 pca_components = np.array([[-0.3635536 , -0.36253655,  0.18978457, -0.4401217 , -0.24528224,
          0.21700805,  0.38140546, -0.3270315 , -0.38339944],
        [ 0.38491387, -0.29840726,  0.46560378,  0.12243858,  0.37358605,
