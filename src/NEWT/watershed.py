@@ -336,10 +336,19 @@ class Watershed(object):
         Run a full timeseries at once.
         data must have columns date (as an actual date type), tmax.
         Will be returned with new columns day, actemp, anom, temp.mod
+        This runs things all at once, so it's much faster, but ignores engines.
         """
-        _ = list(self.run_series_incremental(data))
-        res = self.get_history()[["date", "actemp", "anom", "temp.mod"]]
-        return data.merge(res, on="date")
+        # _ = list(self.run_series_incremental(data))
+        # res = self.get_history()[["date", "actemp", "anom", "temp.mod"]]
+        # return data.merge(res, on="date")
+        data = data.copy()
+        data["day"] = data["date"].dt.day_of_year
+        anoms = anomilize(data)
+        data = data.merge(self.ssn_timeseries[["day", "actemp"]], on="day", how="left").merge(anoms[["date", "at_anom"]], on="date", how="left")
+        data["at_anom"] = scipy.signal.fftconvolve(data["at_anom"], self.at_conv, mode="full")[:-(len(self.at_conv) - 1)] * self.at_coef
+        data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
+        data["temp.mod"] = data["actemp"] + data["anom"]
+        return data.drop(columns=["at_anom"])
 
     def from_data(data,
                   threshold_engine=False,
