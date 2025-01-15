@@ -349,6 +349,7 @@ class Watershed(object):
         data["at_anom"] = scipy.signal.fftconvolve(data["at_anom"], self.at_conv, mode="full")[:-(len(self.at_conv) - 1)] * self.at_coef
         data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
         data["temp.mod"] = data["actemp"] + data["anom"]
+        data.loc[data["temp.mod"] < 0, "temp.mod"] = 0
         return data.drop(columns=["at_anom"])
 
     def from_data(data,
