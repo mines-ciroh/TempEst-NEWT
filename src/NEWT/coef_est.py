@@ -52,16 +52,27 @@ def preprocess(data, allow_no_id=True):
     return predictors
 
 var_sets = [
-    {"name": "PCA0", "vars": ['tmax', 'vp', 'elev_min', 'forest', 'wetland', 'water', 'cold_prcp', 'vp_sd', 'tmax_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 58},
-    {"name": "PCA1", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'slope', 'forest', 'wetland', 'ice_snow', 'water', 'frozen', 'vp_sd', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 20},
+    {"name": "PCA0", "vars": ['tmax', 'vp', 'elev', 'forest', 'wetland', 'water', 'cold_prcp', 'vp_sd', 'tmax_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 100},
+    {"name": "PCA1", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'slope', 'forest', 'wetland', 'water', 'vp_sd', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 37},
     {"name": "PCA2", "vars": ['tmax', 'elev_min', 'elev', 'forest', 'developed', 'ice_snow', 'water', 'canopy', 'cold_prcp', 'vp_sd', 'prcp_phi', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 120},
-    {"name": "PCA3", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'wetland', 'developed', 'frozen', 'cold_prcp', 'prcp_phi', 'prcp_index', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10), "lam": 333},
-    {"name": "PCA4", "vars": ['tmax', 'prcp', 'vp', 'area', 'elev_min', 'elev', 'slope', 'wetland', 'ice_snow', 'water', 'frozen', 'prcp_phi', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 100},
-    {"name": "PCA5", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'forest', 'wetland', 'developed', 'frozen', 'vp_sd', 'prcp_phi', 'prcp_index', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 100},
-    {"name": "PCA6", "vars": ['tmax', 'prcp', 'vp', 'elev_min', 'elev', 'slope', 'water', 'canopy', 'frozen', 'prcp_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 100},
-    {"name": "PCA7", "vars": ['tmax', 'area', 'elev', 'developed', 'frozen', 'vp_sd', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7), "lam": 37},
+    {"name": "PCA3", "vars": ['tmax', 'vp', 'area', 'elev_min', 'elev', 'wetland', 'developed', 'water', 'vp_sd', 'prcp_phi', 'prcp_index', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 333},
+    {"name": "PCA4", "vars": ['tmax', 'vp', 'area', 'elev_min', 'elev', 'slope', 'wetland', 'ice_snow', 'water', 'vp_sd', 'prcp_phi', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 173},
+    {"name": "PCA5", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'forest', 'wetland', 'developed', 'vp_sd', 'prcp_phi', 'prcp_index', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 300},
+    {"name": "PCA6", "vars": ['prcp', 'vp', 'elev_min', 'elev', 'forest', 'water', 'canopy', 'prcp_phi', 'prcp_index', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 300},
+    {"name": "PCA7", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'developed', 'ice_snow', 'canopy', 'vp_sd', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 300},
     {"name": "PCA8", "vars": ['tmax', 'area', 'elev', 'forest', 'wetland', 'developed', 'water', 'canopy', 'cold_prcp', 'vp_sd', 'prcp_phi', 'tmax_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 949},
 ]
+# var_sets = [
+#     {"name": "PCA0", "vars": ['tmax', 'vp', 'elev_min', 'forest', 'wetland', 'water', 'cold_prcp', 'vp_sd', 'tmax_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8), "lam": 58},
+#     {"name": "PCA1", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'slope', 'forest', 'wetland', 'ice_snow', 'water', 'frozen', 'vp_sd', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 20},
+#     {"name": "PCA2", "vars": ['tmax', 'elev_min', 'elev', 'forest', 'developed', 'ice_snow', 'water', 'canopy', 'cold_prcp', 'vp_sd', 'prcp_phi', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 120},
+#     {"name": "PCA3", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'wetland', 'developed', 'frozen', 'cold_prcp', 'prcp_phi', 'prcp_index', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10), "lam": 333},
+#     {"name": "PCA4", "vars": ['tmax', 'prcp', 'vp', 'area', 'elev_min', 'elev', 'slope', 'wetland', 'ice_snow', 'water', 'frozen', 'prcp_phi', 'prcp_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 100},
+#     {"name": "PCA5", "vars": ['tmax', 'vp', 'elev_min', 'elev', 'forest', 'wetland', 'developed', 'frozen', 'vp_sd', 'prcp_phi', 'prcp_index', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11) + s(12), "lam": 100},
+#     {"name": "PCA6", "vars": ['tmax', 'prcp', 'vp', 'elev_min', 'elev', 'slope', 'water', 'canopy', 'frozen', 'prcp_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9), "lam": 100},
+#     {"name": "PCA7", "vars": ['tmax', 'area', 'elev', 'developed', 'frozen', 'vp_sd', 'tmax_phi', 'tmax_index'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7), "lam": 37},
+#     {"name": "PCA8", "vars": ['tmax', 'area', 'elev', 'forest', 'wetland', 'developed', 'water', 'canopy', 'cold_prcp', 'vp_sd', 'prcp_phi', 'tmax_phi'], "eq": s(0) + s(1) + s(2) + s(3) + s(4) + s(5) + s(6) + s(7) + s(8) + s(9) + s(10) + s(11), "lam": 949},
+# ]
 
 
 coef_names = ["PCA" + str(i) for i in range(len(var_sets))]
