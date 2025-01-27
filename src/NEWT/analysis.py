@@ -13,9 +13,26 @@ import os
 import scipy
 rng = np.random.default_rng()
 
-def convolve(series):
-    # Run AT convolution on the provided series.
-    conv = scipy.stats.lognorm.pdf(np.arange(0, 7), 1)
+def convolve(series,
+             conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ])):
+    """Implements anomaly smoothing for analysis use by convolution.
+    
+
+    Parameters
+    ----------
+    series : numeric array
+        The series (typically, air temperature anomaly) to be smoothed.
+    conv : numeric array
+        The array to use for smoothing.  This is applies "backwards", so, for
+        the final entry in the result, conv[0] is multiplied with series[-1],
+        etc.
+
+    Returns
+    -------
+    numeric array
+        The smoothed/convolved result.
+
+    """
     return scipy.signal.fftconvolve(series,
                                     conv, mode="full")[:-(len(conv) - 1)]
 
@@ -102,35 +119,74 @@ def nse(sim, obs):
     return 1 - np.mean((sim - obs)**2) / np.std(obs)**2
     
 
-def perf_summary(data):
+def perf_summary(data, obs="temperature", mod="temp.mod", dates="date",
+                 statlag=1):
+    """Summarize the performance of a modeled column in data compared to an
+    observed column.
+    
+    Goodness-of-fit metrics computed:
+        R2, coefficient of determination
+        RMSE, root mean square error
+        NSE, Nash-Sutcliffe Efficiency, with comparison points:
+            StationaryNSE, NSE of "same as N days ago" (using statlag)
+            ClimatologyNSE, NSE of "day-of-year mean"
+            Note that neither comparison is entirely fair for an ungaged model.
+        AnomalyNSE: NSE of the anomaly component only
+        Pbias: percent bias (positive equals overestimation)
+        Bias: absolute bias, or mean error (positive equals overestimation)
+        MaxMiss: mean absolute error of annual maximum temperature
+    
+
+    Parameters
+    ----------
+    data : pandas DataFrame
+        DataFrame containing the timeseries data to be analyzed.  This should
+        just be for the group of interest, e.g. applied to a grouped DF.
+    obs : str
+        Column containing observations.
+    mod : str
+        Column containing predictions.
+    dates : str
+        Column containing dates.  Must be an actual Pandas datetime column.
+    statlag : integer
+        How many days of lag to use for stationary NSE. Useful for evaluating
+        forecast lead time.
+
+    Returns
+    -------
+    pandas DataFrame
+        Single-row data frame containing performance statistics.
+
     """
-    Summarize performance.  data just needs to have temperature, temp.mod, and
-    date.
-    """
-    data["day"] = data["date"].dt.day_of_year
-    anomod = anomalies(data["date"], data["temp.mod"])
-    anobs = anomalies(data["date"], data["temperature"])
-    clim = data[["date", "day"]].merge(
-        data.groupby("day", as_index=False)["temperature"].mean())
+    data["day"] = data[dates].dt.day_of_year
+    anomod = anomalies(data[dates], data[mod])
+    anobs = anomalies(data[dates], data[obs])
+    clim = data[[dates, "day"]].merge(
+        data.groupby("day", as_index=False)[obs].mean())
     anom_nse = nse(anomod, anobs)
-    clim_nse = nse(clim["temperature"], data["temperature"])
-    stat_nse = nse(data["temperature"][:-1], data["temperature"][1:])
+    clim_nse = nse(clim[obs], data[obs])
+    stat_nse = nse(data[obs][:-1], data[obs][1:])
     return pd.DataFrame({
-            "R2": [data["temperature"].corr(data["temp.mod"])**2],
-            "RMSE": np.sqrt(np.mean((data["temp.mod"] - data["temperature"])**2)),
-            "NSE": nse(data["temp.mod"], data["temperature"]),
+            "R2": [data[obs].corr(data[mod])**2],
+            "RMSE": np.sqrt(np.mean((data[mod] - data[obs])**2)),
+            "NSE": nse(data[mod], data[obs]),
             "StationaryNSE": stat_nse,
             "ClimatologyNSE": clim_nse,
             "AnomalyNSE": anom_nse,
-            "Pbias": np.mean(data["temp.mod"] - data["temperature"]) / np.mean(data["temperature"])*100,
-            "Bias": np.mean(data["temp.mod"] - data["temperature"]),
-            "MaxMiss": data.assign(year=lambda x: x["date"].dt.year).groupby("year")[["temperature", "temp.mod"]].max().assign(maxmiss=lambda x: abs(x["temperature"] - x["temp.mod"]))["maxmiss"].mean()
+            "Pbias": np.mean(data[mod] - data[obs]) / np.mean(data[obs])*100,
+            "Bias": np.mean(data[mod] - data[obs]),
+            "MaxMiss": data.assign(year=lambda x: x[dates].dt.year).groupby("year")[[obs, mod]].max().assign(maxmiss=lambda x: abs(x[obs] - x[mod]))["maxmiss"].mean()
         })
 
 def kfold(data, modbuilder, parallel=0, by="id", k=10, output=None, redo=False):
     """
     Run a k-fold cross-validation over the given data.  If k=1, run leave-one-
     out instead.  Return and save the results.
+    
+    This can run over an arbitrary grouping variable, e.g. for regional
+    cross-validation.  It's also designed to cache results for repeated use
+    in a validation notebook or similar: if `output` exists and `redo` is False,
+    it will just load the previous run from `output` and return that.
 
     Parameters
     ----------
@@ -171,7 +227,7 @@ def kfold(data, modbuilder, parallel=0, by="id", k=10, output=None, redo=False):
     data = data.merge(groups, on=by)
     def rungrp(grp):
         (gn, df) = grp
-        mod = modbuilder(data[data["GroupNo"] != gn])
+        mod = modbuilder(data[data["GroupNo"] != gn].copy())
         return pd.concat([mod(wsdat)
                           for _, wsdat in df.groupby("id")])
     result = pd.concat([rungrp(grp) for grp in data.groupby("GroupNo")])
@@ -182,11 +238,24 @@ def kfold(data, modbuilder, parallel=0, by="id", k=10, output=None, redo=False):
 
 def circular_season(days, values):
     """
-    days: Series of date string, Pandas datetime, or integer day of year
-    values: whatever we're computing the seasonality of.
-    Returns (center day, seasonality index)
-    
-    Compute seasonality under circulat statistics (Fisher 1993).
+    Compute seasonality under circular statistics (Fisher 1993).
+
+    Parameters
+    ----------
+    days : pandas Series
+        Series of date string, Pandas datetime, or integer day of year.
+    values : numeric pandas Series
+        Whatever we're computing the seasonality of.
+
+    Returns
+    -------
+    day_ctr : float
+        Mean, or central, day of the quantity.
+    I : float
+        Seasonality index.
+        
+    Notes
+    -----
     For angle from Jan. 1:
         S = sum(P*sin)
         C = sum(P*cos)
