@@ -91,7 +91,8 @@ class Watershed(object):
                 climate_period=365,
                 extra_history_columns=[],
                 logfile=None,
-                anomgam=None):
+                anomgam=None,
+                quantiles=None):
         """
         seasonality: a three-sine seasonality object
         at_coef: air temperature anomaly coefficient
@@ -118,6 +119,11 @@ class Watershed(object):
         anomgam: a trained GAM that takes seasonal temperature and
             (smoothed + weighted) anomaly to predict adjusted ST anomaly.
             If not provided, adjustment will not be applied.
+        intervals: a list of quantiles to predict instead of a single value.
+            Alternatively, an integer number of quantiles to predict.  An odd number
+            is recommended to include 0.5 (median).
+            This applies to anomaly only, NOT seasonality.  The model must
+            be using an anomgam.
         """
         self.seasonality = seasonality
         self.ssn_timeseries = seasonality.generate_ts()  # day, actemp
@@ -141,6 +147,21 @@ class Watershed(object):
                         self.basic_histcol]
         self.logfile = logfile
         self.anomgam = anomgam
+        if anomgam is None and quantiles is not None:
+            raise ValueError("Watershed.__init__: If `quantiles` is set, `anomgam` must also be set.")
+        if isinstance(quantiles, int):
+            step = 1/(quantiles + 1)
+            self.quantiles = np.arange(step, 1, step)
+        else:
+            # List or None, don't need to do anything
+            self.quantiles = quantiles
+        if self.quantiles is not None:
+            for nm in ["anom", "temp.mod"]:
+                for q in self.quantiles:
+                    self.histcol.append(
+                        f"{nm}_{q}"
+                    )
+        
     
     def from_file(filename, init=False, estimator=None):
         if logalot:
@@ -288,6 +309,14 @@ class Watershed(object):
         anom = at_anom * self.at_coef
         if self.anomgam is not None:
             anom = self.anomgam.predict(np.array([[ssn, anom]]))[0]
+        if self.quantiles is not None:
+            anomq = self.anomgam.confidence_intervals(np.array([[ssn, anom]]),
+                                                      quantiles=self.quantiles)[0,:]
+            anomq[anomq < -ssn] = -ssn
+            predq = anomq + ssn
+            for (nm, vals) in [("anom", anomq), ("temp.mod", predq)]:
+                for (i, q) in enumerate(self.quantiles):
+                    self.history[f"{nm}_{q}"].append(vals[i])
         pred = ssn + anom
         pred = pred if pred >= 0 else 0
         self.temperature = pred
@@ -297,7 +326,7 @@ class Watershed(object):
         self.history["at"].append(at)
         self.history["actemp"].append(ssn)
         self.history["anom"].append(anom)
-        self.history["temp.mod"].append(pred)
+        self.history["temp.mod"].append(pred)            
         for k in self.histcol:
             self.history[k].append(self.extras[k])
         # self.history["swe"].append(swe)
@@ -318,7 +347,10 @@ class Watershed(object):
         if logalot:
             self.log(f"Concluded step; predicted ST: {self.temperature}")
         # Result
-        return pred
+        if self.quantiles is None:
+            return pred
+        else:
+            return predq
     
     def run_series_incremental(self, data):
         """
@@ -350,6 +382,17 @@ class Watershed(object):
         data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
         data["temp.mod"] = data["actemp"] + data["anom"]
         data.loc[data["temp.mod"] < 0, "temp.mod"] = 0
+        if self.quantiles is not None:
+            anomq = self.anomgam.confidence_intervals(data[["actemp", "at_anom"]],
+                                                      quantiles=self.quantiles)
+            for (i, q) in enumerate(self.quantiles):
+                anomcol = f"anom_{q}"
+                predcol = f"temp.mod_{q}"
+                ssn = data["actemp"]
+                anom = anomq[:,i]
+                anom[anom < -ssn] = -(ssn[anom < -ssn])
+                data[anomcol] = anom
+                data[predcol] = ssn + anom
         return data.drop(columns=["at_anom"])
 
     def from_data(data,
@@ -362,7 +405,8 @@ class Watershed(object):
                   until=30,
                   at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
                   extra_history_columns=[],
-                  use_anomgam=True):
+                  use_anomgam=True,
+                  **kwargs):
         """
         Train a watershed model from data.
         Requires columns date, temperature, tmax
@@ -405,4 +449,4 @@ class Watershed(object):
                          year_engine=linear_ssn, year_doy=until,
                          dynamic_engine=thres_eng, dynamic_period=7,
                          extra_history_columns=extra_history_columns,
-                         anomgam=anomgam)
+                         anomgam=anomgam, **kwargs)
