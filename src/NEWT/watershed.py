@@ -151,7 +151,9 @@ class Watershed(object):
             raise ValueError("Watershed.__init__: If `quantiles` is set, `anomgam` must also be set.")
         if isinstance(quantiles, int):
             step = 1/(quantiles + 1)
-            self.quantiles = np.arange(step, 1, step)
+            # Rounding mitigates floating point errors
+            rounder = max(2, int(np.log(quantiles) / np.log(10)))
+            self.quantiles = np.round(np.arange(step, 1, step), rounder)
         else:
             # List or None, don't need to do anything
             self.quantiles = quantiles
