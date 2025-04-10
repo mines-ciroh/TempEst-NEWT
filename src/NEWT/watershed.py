@@ -92,7 +92,8 @@ class Watershed(object):
                 extra_history_columns=[],
                 logfile=None,
                 anomgam=None,
-                quantiles=None):
+                quantiles=None,
+                anomnoise=0):
         """
         seasonality: a three-sine seasonality object
         at_coef: air temperature anomaly coefficient
@@ -119,6 +120,7 @@ class Watershed(object):
         anomgam: a trained GAM that takes seasonal temperature and
             (smoothed + weighted) anomaly to predict adjusted ST anomaly.
             If not provided, adjustment will not be applied.
+        anomnoise: a float quantifying anomaly prediction noisiness.
         intervals: a list of quantiles to predict instead of a single value.
             Alternatively, an integer number of quantiles to predict.  An odd number
             is recommended to include 0.5 (median).
@@ -147,6 +149,7 @@ class Watershed(object):
                         self.basic_histcol]
         self.logfile = logfile
         self.anomgam = anomgam
+        self.anomnoise = anomnoise
         if anomgam is None and quantiles is not None:
             raise ValueError("Watershed.__init__: If `quantiles` is set, `anomgam` must also be set.")
         if isinstance(quantiles, int):
@@ -312,8 +315,11 @@ class Watershed(object):
         if self.anomgam is not None:
             anom = self.anomgam.predict(np.array([[ssn, anom]]))[0]
         if self.quantiles is not None:
+            # Function uncertainty
             anomq = self.anomgam.confidence_intervals(np.array([[ssn, anom]]),
                                                       quantiles=self.quantiles)[0,:]
+            # Noise
+            anomq += scipy.stats.norm.ppf(self.quantiles) * self.anomnoise
             anomq[anomq < -ssn] = -ssn
             predq = anomq + ssn
             for (nm, vals) in [("anom", anomq), ("temp.mod", predq)]:
@@ -442,13 +448,15 @@ class Watershed(object):
                                               # ,"anom_hummod"
                                               ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
         at_coef = sol[0]
+        anomnoise = 0
         if anomgam is None and use_anomgam:
             X = anoms[["actemp", "anom_atmod"]].copy()
             X["anom_atmod"] *= at_coef
             y = anoms["st_anom"]
             anomgam = pygam.LinearGAM(pygam.te(0, 1)).fit(X, y)
+            anomnoise = np.sqrt(np.mean((anomgam.predict(X) - y)**2))
         return Watershed(ssn, at_coef, at_day, at_conv,
                          year_engine=linear_ssn, year_doy=until,
                          dynamic_engine=thres_eng, dynamic_period=7,
                          extra_history_columns=extra_history_columns,
-                         anomgam=anomgam, **kwargs)
+                         anomgam=anomgam, anomnoise=anomnoise, **kwargs)
