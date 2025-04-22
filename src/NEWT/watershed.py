@@ -387,7 +387,10 @@ class Watershed(object):
         anoms = anomilize(data, obs=False)
         data = data.merge(self.ssn_timeseries[["day", "actemp"]], on="day", how="left").merge(anoms[["date", "at_anom"]], on="date", how="left")
         data["at_anom"] = scipy.signal.fftconvolve(data["at_anom"], self.at_conv, mode="full")[:-(len(self.at_conv) - 1)] * self.at_coef
-        data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
+        if self.anomgam is not None:
+            data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
+        else:
+            data["anom"] = data["at_anom"]
         data["temp.mod"] = data["actemp"] + data["anom"]
         data.loc[data["temp.mod"] < 0, "temp.mod"] = 0
         if self.quantiles is not None:
