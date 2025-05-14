@@ -116,7 +116,11 @@ def anomalies(date, y):
 def nse(sim, obs):
     sim = sim.to_numpy()
     obs = obs.to_numpy()
-    return 1 - np.mean((sim - obs)**2) / np.std(obs)**2
+    varobs = np.std(obs)**2
+    if varobs == 0:
+        return np.NaN
+    else:
+        return 1 - np.mean((sim - obs)**2) / varobs
     
 
 def perf_summary(data, obs="temperature", mod="temp.mod", dates="date",
