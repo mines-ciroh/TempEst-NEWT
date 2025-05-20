@@ -8,9 +8,9 @@ import pandas as pd
 import numpy as np
 from yaml import load, dump, Loader
 from datetime import timedelta
-from NEWT import engines
-from NEWT.engines import ModEngine
 import pygam
+from libschema import SCHEMA
+import libschema.classes as classes
 
 def anomilize(data, obs=True):
     data["day"] = data["date"].dt.day_of_year
@@ -23,77 +23,51 @@ def anomilize(data, obs=True):
     data["at_anom"] = data["tmax"] - data["tmax_day"]
     return data
 
-
-def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
-               year_eng, year_period, climate_eng, climate_period,
-               ext_hist, history, logfile, anomgam):
-    """
-    Converts watershed data to a file in a consistent format.
-    """
-    ssn = {k: float(v[0]) for k, v in ssn.to_df().items()
-           if not k in ["R2", "RMSE"]}
-    atd_str = at_day[["day", "mean_tmax"]].to_dict()
-    at_coef = float(at_coef)
-    at_conv = at_conv.tolist()
-    data = {
-        "seasonality": ssn,
-        "date": str(date),
-        "at_coef": at_coef,
-        "at_conv": at_conv,
-        "at_day": atd_str,
-        "history": history.to_dict(),
-        "dynamic_engine": dyn_eng.to_dict() if dyn_eng is not None else None,
-        "dynamic_period": dyn_period,
-        "year_engine": year_eng.to_dict() if year_eng is not None else None,
-        "year_period": year_period,
-        "climate_engine": climate_eng.to_dict() if climate_eng is not None else None,
-        "climate_period": climate_period,
-        "ext_hist_col": ext_hist,
-        "logfile": logfile,
-        "anomgam": anomgam
-        }
-    return data
-
-
-def ws_from_data(coefs):
-    """
-    Generates watershed from coefficients dictionary.
-    """
-    ws = Watershed(rts.ThreeSine.from_coefs(pd.DataFrame(coefs["seasonality"], index=[0])),
-                   at_coef=coefs["at_coef"],
-                   at_day=pd.DataFrame(coefs["at_day"]),
-                   at_conv=np.array(coefs["at_conv"]),
-                   dynamic_engine=ModEngine.from_dict(coefs["dynamic_engine"]) if coefs["dynamic_engine"] is not None else None,
-                   dynamic_period=coefs["dynamic_period"],
-                   year_engine=ModEngine.from_dict(coefs["year_engine"]) if coefs["year_engine"] is not None else None,
-                   year_doy=coefs["year_period"],
-                   climate_engine=ModEngine.from_dict(coefs["climate_engine"]) if coefs["climate_engine"] is not None else None,
-                   climate_period=coefs["climate_period"],
-                   extra_history_columns=coefs["ext_hist_col"],
-                   logfile=coefs["logfile"],
-                   anomgam=coefs["anomgam"]
-                   )
-    ws.history = pd.DataFrame(coefs["history"])
-    ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
-    return ws
-    
 logalot = False
 
-class Watershed(object):
+class Seasonality(classes.Seasonality):
+    def __init__(self, ssn: rts.ThreeSine):
+        self.ssn = ssn
+        self.timeseries = ssn.generate_ts()
+    
+    def apply(self, period):
+        return self.timeseries.iloc[period - 1]["actemp"]
+    
+    def apply_vec(self, period_array):
+        return self.timeseries.iloc[period_array - 1]["actemp"].to_numpy()
+    
+    def from_dict(d):
+        return Seasonality(rts.ThreeSine(**d))
+    
+    def to_dict(self):
+        return self.ssn.to_dict()
+    
+class Anomaly(classes.Anomaly):
+    def __init__(self, sensitivity, anomgam=None, quantiles=None, anomnoise=0,
+                 conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ])):
+        if anomgam is None and quantiles is not None:
+            raise ValueError("Anomaly.__init__: If `quantiles` is set, `anomgam` must also be set.")
+        self.sensitivity = sensitivity
+        self.anomgam = anomgam
+        self.conv = conv
+        if isinstance(quantiles, int):
+            step = 1/(quantiles + 1)
+            # Rounding mitigates floating point errors
+            rounder = max(2, int(np.log(quantiles) / np.log(10)))
+            self.quantiles = np.round(np.arange(step, 1, step), rounder)
+        else:
+            self.quantiles = quantiles
+    
+    def apply(self, periodic, period, anom_history):
+        temp_hist = anom_history["tmax"].to_numpy()
+        
+
+class Watershed(SCHEMA):
     basic_histcol = ["date", "day", "at", "actemp", "anom", "temp.mod"]
-    def __init__(self, seasonality, at_coef, at_day,
-                at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
-                dynamic_engine=None,
-                dynamic_period=1,
-                year_engine=None,
-                year_doy=180,
-                climate_engine=None,
-                climate_period=365,
+    # TODO: refactor init to use anomaly arguments, not just anomaly object.
+    def __init__(self, seasonality, anomaly, at_day,
                 extra_history_columns=[],
-                logfile=None,
-                anomgam=None,
-                quantiles=None,
-                anomnoise=0):
+                logfile=None):
         """
         seasonality: a three-sine seasonality object
         at_coef: air temperature anomaly coefficient
@@ -127,71 +101,23 @@ class Watershed(object):
             This applies to anomaly only, NOT seasonality.  The model must
             be using an anomgam.
         """
+        # TODO: not done refactoring this.
+        super.__init__(self, seasonality, anomaly, ...)
         self.seasonality = seasonality
-        self.ssn_timeseries = seasonality.generate_ts()  # day, actemp
-        self.at_coef = at_coef
+        self.anomaly = anomaly
         self.dailies = at_day
-        self.at_conv = at_conv
-        self.statics = {
-            "seasonality": seasonality,
-            "at_coef": at_coef,
-            "dailies": self.dailies.copy()
-            }
-        self.dynamic_engine = dynamic_engine
-        self.dynamic_period = dynamic_period
-        self.year_engine = year_engine
-        self.year_doy = year_doy
-        self.climate_engine = climate_engine
-        self.climate_period = climate_period
         self.period = 0
         self.date = None
         self.histcol = [c for c in extra_history_columns if not c in
                         self.basic_histcol]
         self.logfile = logfile
-        self.anomgam = anomgam
-        self.anomnoise = anomnoise
-        if anomgam is None and quantiles is not None:
-            raise ValueError("Watershed.__init__: If `quantiles` is set, `anomgam` must also be set.")
-        if isinstance(quantiles, int):
-            step = 1/(quantiles + 1)
-            # Rounding mitigates floating point errors
-            rounder = max(2, int(np.log(quantiles) / np.log(10)))
-            self.quantiles = np.round(np.arange(step, 1, step), rounder)
-        else:
-            # List or None, don't need to do anything
-            self.quantiles = quantiles
-        if self.quantiles is not None:
+        quantiles = anomaly.quantiles
+        if quantiles is not None:
             for nm in ["anom", "temp.mod"]:
-                for q in self.quantiles:
+                for q in quantiles:
                     self.histcol.append(
                         f"{nm}_{q}"
                     )
-        
-    
-    def from_file(filename, init=False, estimator=None):
-        if logalot:
-            print(f"Attempting to open file: {filename}")
-        try:
-            with open(filename) as f:
-                coefs = load(f, Loader)
-            ws = ws_from_data(coefs)
-            if init:
-                ws.initialize_run(coefs["date"])
-            return ws
-        except Exception as e:
-            with open("unspecified_log.txt", "w") as f:
-                f.write(f"Error in loading {filename}: {e}")
-    
-    def to_file(self, filename):
-        data = ws_to_data(self.seasonality, self.date, self.at_coef,
-                          self.dailies, self.at_conv, self.dynamic_engine,
-                          self.dynamic_period, self.year_engine,
-                          self.year_doy, self.climate_engine,
-                          self.climate_period, self.histcol,
-                          self.get_history(), self.logfile,
-                          self.anomgam)
-        with open(filename, "w") as f:
-            dump(data, f)
     
     def coefs_to_df(self):
         base = self.seasonality.to_df().assign(
@@ -209,18 +135,6 @@ class Watershed(object):
         if self.logfile is not None:
             with open(self.logfile, "w" if reset else "a") as f:
                 f.write(text + "\n")
-
-    def initialize_run(self, start=None):
-        # Logs allow efficient handling of a rolling anomaly
-        self.at_log = []
-        self.at = None
-        self.temperature = None
-        self.timestep = 0
-        self.date = pd.to_datetime(start)
-        self.extras = {x: None for x in self.histcol}
-        self.history = {x: [] for x in self.basic_histcol} | {x: [] for x in self.histcol}
-        if logalot:
-            self.log("Initialized model run")
     
     def get_history(self):
         return pd.DataFrame(self.history)
@@ -240,49 +154,9 @@ class Watershed(object):
         self.extras[key] = value
     def get_extras(self):
         return self.extras
-        
-    def trigger_engine(self, engine):
-        """
-        For dynamic modification of model coefficients, we may trigger a
-        modification engine.  Triggering itself is handled in the stepper
-        function.
-
-        Here, we update coefficients as specified by the engine, then
-        regenerate anything as necessary.  The engine may modify seasonality
-        coefficients and sensitivity coefficients, as well as seasonality
-        baselines.
-        """
-        blend_window = 60
-        (self.seasonality, self.at_coef, self.dailies) =\
-            engine.apply(self.seasonality, self.at_coef, self.dailies,
-                    self.get_history(), self.statics)
-        # We want to smoothly blend it in, rather than an abrupt jump
-        ssnts = self.ssn_timeseries.rename(columns={"actemp": "oldtemp"}).merge(
-            self.seasonality.generate_ts(), on="day"
-            )
-        ssnts["weights"] = 1.0
-        window_overlap = self.doy + blend_window > 366
-        if window_overlap:
-            pos = (ssnts["day"] >= self.doy) | (ssnts["day"] < (self.doy + blend_window) % 366)
-        else:
-            pos = (ssnts["day"] >= self.doy) & (ssnts["day"] < self.doy + blend_window)
-        ssnts.loc[pos,
-                          "weights"] =\
-            np.arange(blend_window) / blend_window
-        ssnts["actemp"] = (ssnts["actemp"] * ssnts["weights"] +
-                            ssnts["oldtemp"] * (1-ssnts["weights"]))
-        self.ssn_timeseries = ssnts.drop(columns=["oldtemp", "weights"])
-    
-    def reset_coefs(self):
-        """
-        Reset coefficients, removing effects of any modification engines.
-        """
-        self.seasonality = self.statics["seasonality"]
-        self.at_coef = self.statics["at_coef"]
-        self.dailies = self.statics["dailies"].copy()
-        self.ssn_timeseries = self.seasonality.generate_ts()
 
     def step(self, date=None, at=None, extras=None):
+        # TODO: take this out, but work in the anomaly function first.
         """
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
@@ -407,13 +281,7 @@ class Watershed(object):
         return data.drop(columns=["at_anom"])
 
     def from_data(data,
-                  threshold_engine=False,
-                  lin_ssn=False,
                   anomgam=None,
-                  names=["Intercept", "Amplitude", "SummerDay"],
-                  xs=["at"],
-                  start=330,
-                  until=30,
                   at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
                   extra_history_columns=[],
                   use_anomgam=True,
@@ -425,28 +293,14 @@ class Watershed(object):
         lin_ssn: fit linear seasonality engine?
         names, xs, start, until: passed to linear seasonality trainer
         """
-        linear_ssn = (
-            engines.LinearSeasonEngine.from_data(
-                data.rename(columns={"tmax": "at"}),
-                                      names, xs, start, until) if
-            lin_ssn else None)
         data["day"] = data["date"].dt.day_of_year
         if len(data["day"].unique()) < 181:
             return None
         anoms = anomilize(data)
         at_day = data.groupby(["day"], as_index=False)["tmax"].mean().rename(columns={"tmax": "mean_tmax"})
         ssn = rts.ThreeSine.from_data(data[["day", "temperature"]])
-        uncal_prd = Watershed(ssn, 0, at_day,
-                              year_engine=linear_ssn, year_doy=until,
-                              extra_history_columns=extra_history_columns).\
-            run_series(data) if lin_ssn else None
-        anoms = anoms.drop(columns=["temperature", "st_anom"]).merge(
-            uncal_prd[["date", "temp.mod", "temperature"]], on="date").assign(
-                st_anom = lambda x: x["temperature"] - x["temp.mod"]) if lin_ssn else anoms
         anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"],
                                                        at_conv, mode="full")[:-(len(at_conv) - 1)]
-        thres_eng = engines.ThresholdSensitivityEngine.from_data(
-            anoms, use_at=False) if threshold_engine else None
         sol = np.linalg.lstsq(np.array(anoms[["anom_atmod"
                                               # ,"anom_hummod"
                                               ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
@@ -459,7 +313,5 @@ class Watershed(object):
             anomgam = pygam.LinearGAM(pygam.te(0, 1)).fit(X, y)
             anomnoise = np.sqrt(np.mean((anomgam.predict(X) - y)**2))
         return Watershed(ssn, at_coef, at_day, at_conv,
-                         year_engine=linear_ssn, year_doy=until,
-                         dynamic_engine=thres_eng, dynamic_period=7,
                          extra_history_columns=extra_history_columns,
                          anomgam=anomgam, anomnoise=anomnoise, **kwargs)
