@@ -6,7 +6,6 @@ import rtseason as rts
 import scipy
 import pandas as pd
 import numpy as np
-from datetime import timedelta
 import pygam
 from libschema import SCHEMA
 import libschema.classes as classes
@@ -84,6 +83,17 @@ class Anomaly(classes.Anomaly):
         if self.quantiles is None:
             return res[0]  # just a vector
         return res[0,:]  # first row
+    
+    def to_dict(self):
+        return {
+            "sensitivity": self.sensitivity,
+            "anomgam": self.anomgam,
+            "quantiles": self.quantiles,
+            "anomnoise": self.anomnoise,
+            "conv": self.conv}
+    
+    def from_dict(d):
+        return Anomaly(**d)
         
 
 class Watershed(SCHEMA):

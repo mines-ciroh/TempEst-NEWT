@@ -11,10 +11,12 @@ from libschema.classes import ModEngine
 
 class ClimateEngine(ModEngine):
     def __init__(self, coef_model):
+        # coef_model should be: prediction data --> (Seasonality, Anomaly,
+        # Periodics)
         self.coef_model = coef_model
     
     def apply(self, seasonality, anomaly, periodics, history):
-        return (seasonality, anomaly, periodics)
+        return self.coef_model(history)
 
 
 class WetDryEngine(ModEngine):
