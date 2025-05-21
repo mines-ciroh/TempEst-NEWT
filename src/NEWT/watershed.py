@@ -97,7 +97,7 @@ class Anomaly(classes.Anomaly):
         
 
 class Watershed(SCHEMA):
-    basic_histcol = ["date", "day", "tmax", "actemp", "anom", "temp.mod"]
+    basic_histcol = ["date", "day", "tmax"]
     def __init__(self,
                  seasonality: Seasonality | dict,
                  anomaly: Anomaly | dict,
@@ -125,7 +125,7 @@ class Watershed(SCHEMA):
             anomaly = Anomaly(**anomaly)
         at_day = at_day.rename(columns={"day": "period",
                                         "mean_tmax": "tmax"})
-        super.__init__(seasonality,
+        super().__init__(seasonality,
                        anomaly,
                        at_day,
                        engines,
@@ -145,7 +145,7 @@ class Watershed(SCHEMA):
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
-        step = super.run_step(inputs, period)
+        step = super().run_step(inputs, period)
         # If there are quantiles, then the prediction is a vector, not a single value.
         # In that case, history["output"] just got a vector appended, and the
         # step above is a vector.
@@ -165,7 +165,7 @@ class Watershed(SCHEMA):
         This runs things all at once, so it's much faster, but ignores engines.
         """
         data["day"] = data["date"].dt.day_of_year
-        (result, outdata) = super.run_series(data, "date", period_col="day")
+        (result, outdata) = super().run_series(data, "date", period_col="day")
         if self.anomaly.quantiles is None:
             return (result, outdata)
         # If we have quantiles, then outdata has a nonsensical prediction
