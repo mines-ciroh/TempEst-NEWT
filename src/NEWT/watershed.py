@@ -10,7 +10,25 @@ import pygam
 from libschema import SCHEMA
 import libschema.classes as classes
 
-def anomilize(data, obs=True):
+def anomilize(data: pd.DataFrame, obs=True) -> pd.DataFrame:
+    """
+    Add anomaly information, comparing the air and optionally water temperature
+    timeseries to their observed baselines.
+
+    Parameters
+    ----------
+    data : DataFrame
+        The input dataframe. Columns: date, tmax. Also temperature if obs is True.
+    obs : Bool, optional
+        Whether the data includes observed temperature. The default is True.
+
+    Returns
+    -------
+    data : DataFrame
+        Data frame with added columns: day, at_day and at_anom (air temperature),
+        optionally actemp and st_anom (water temperature).
+
+    """
     data["day"] = data["date"].dt.day_of_year
     if obs:
         data = data.merge(rts.ThreeSine.from_data(data[["day", "temperature"]]
@@ -29,14 +47,14 @@ class Seasonality(classes.Seasonality):
         self.timeseries = ssn.generate_ts()
         self.quantiles = quantiles
     
-    def apply(self, period):
+    def apply(self, period: int):
         res = self.timeseries.iloc[period - 1]["actemp"]
         if self.quantiles is None:
             return res
         # So the dimensions agree
         return np.array([res] * self.quantiles)
     
-    def apply_vec(self, period_array):
+    def apply_vec(self, period_array: np.array):
         res = self.timeseries.iloc[period_array - 1]["actemp"].to_numpy()
         if self.quantiles is None:
             return res
@@ -117,21 +135,35 @@ class Watershed(SCHEMA):
                  anomaly: Anomaly | dict,
                  at_day: pd.DataFrame,
                  engines: list[tuple[int, classes.ModEngine]],
-                 extra_columns=[],
-                 logfile=None):
+                 extra_columns: list[str]=[],
+                 logfile: str=None):
         """
-        seasonality: a Seasonaly object or dictionary of {Intercept, Amplitude,
-                     SpringSummer, FallWinter, SpringDay, SummerDay, FallDay,
-                     WinterDay}.
-        anomaly: an Anomaly object or dictionary of {at_coef} with optional
-                 {anomgam, quantiles, anomnoise, conv}.
-        at_day: data frame of [day, mean_tmax] or [period, tmax].
-        engines: list of [(frequency, classes.ModEngine)]
+        Initialize a Watershed object.
+
+        Parameters
+        ----------
+        seasonality : Seasonality | dict
+            a Seasonaly object or dictionary of {Intercept, Amplitude,
+            SpringSummer, FallWinter, SpringDay, SummerDay, FallDay,
+            WinterDay}.
+        anomaly : Anomaly | dict
+            an Anomaly object or dictionary of {at_coef} with optional
+            {anomgam, quantiles, anomnoise, conv}.
+        at_day : pd.DataFrame
+            data frame of [day, mean_tmax] or [period, tmax].
+        engines : list[tuple[int, classes.ModEngine]]
             Modification engines to apply at specified frequencies.
-        extra_columns: names of added columns to include in model
+        extra_columns : list of strings, optional
             history (e.g., for use by modification engines).  All columns
             specified must be provided for each step or specified through
-            setters.
+            setters. The default is [].
+        logfile : str, optional
+            Where to store logs, if anywhere. The default is None.
+
+        Returns
+        -------
+        None.
+
         """
         if type(seasonality) == dict:
             seasonality = Seasonality(**seasonality)
@@ -179,7 +211,7 @@ class Watershed(SCHEMA):
     def run_series(self, data, context=True):
         """
         Run a full timeseries at once.
-        data must have columns date (as an actual date type), tmax.
+        data must have columns date (as an actual date type), day, tmax.
         Will be returned with new columns day, actemp, anom, temp.mod
         This runs things all at once, so it's much faster, but only works without engines.
         If engines are present, it switches to an incremental run.
