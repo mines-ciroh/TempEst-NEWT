@@ -41,11 +41,11 @@ class Seasonality(classes.Seasonality):
         return self.ssn.to_dict()
     
 class Anomaly(classes.Anomaly):
-    def __init__(self, sensitivity, anomgam=None, quantiles=None, anomnoise=0,
+    def __init__(self, at_coef, anomgam=None, quantiles=None, anomnoise=0,
                  conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ])):
         if anomgam is None and quantiles is not None:
             raise ValueError("Anomaly.__init__: If `quantiles` is set, `anomgam` must also be set.")
-        self.sensitivity = sensitivity
+        self.at_coef = at_coef
         self.anomgam = anomgam
         self.anomnoise = anomnoise
         self.conv = conv
@@ -61,13 +61,13 @@ class Anomaly(classes.Anomaly):
         temp_hist = anom_history["tmax"].to_numpy()
         temp_anom = scipy.signal.fftconvolve(
             temp_hist, self.conv, mode="full"
-            )[:-(len(self.conv) - 1)] * self.sensitivity
+            )[:-(len(self.conv) - 1)] * self.at_coef
         if self.anomgam is not None:
             temp_anom = self.anomgam.predict(
                 pd.DataFrame({"actemp": periodic,
-                             "at_anom": temp_anom})
+                             "at_anom": temp_anom[-len(periodic):]})
                 )
-            # Prevent 0-degree predictions
+        # Prevent 0-degree predictions
         temp_anom[temp_anom < -periodic] = -periodic[temp_anom < -periodic]
         if self.quantiles is not None:
             anomq = self.anomgam.confidence_intervals(
@@ -80,14 +80,14 @@ class Anomaly(classes.Anomaly):
         return temp_anom
     
     def apply(self, periodic, period, anom_history):
-        res = self.apply_vec(periodic, period, anom_history)
+        res = self.apply_vec(np.array([periodic]), np.array([period]), anom_history)
         if self.quantiles is None:
             return res[0]  # just a vector
         return res[0,:]  # first row
     
     def to_dict(self):
         return {
-            "sensitivity": self.sensitivity,
+            "at_coef": self.at_coef,
             "anomgam": self.anomgam,
             "quantiles": self.quantiles,
             "anomnoise": self.anomnoise,
@@ -110,7 +110,7 @@ class Watershed(SCHEMA):
         seasonality: a Seasonaly object or dictionary of {Intercept, Amplitude,
                      SpringSummer, FallWinter, SpringDay, SummerDay, FallDay,
                      WinterDay}.
-        anomaly: an Anomaly object or dictionary of {sensitivity} with optional
+        anomaly: an Anomaly object or dictionary of {at_coef} with optional
                  {anomgam, quantiles, anomnoise, conv}.
         at_day: data frame of [day, mean_tmax] or [period, tmax].
         engines: list of [(frequency, classes.ModEngine)]
@@ -158,17 +158,22 @@ class Watershed(SCHEMA):
             self.history["output"][-1] = np.mean(self.history["output"][-1])
         return step
 
-    def run_series(self, data):
+    def run_series(self, data, context=True):
         """
         Run a full timeseries at once.
         data must have columns date (as an actual date type), tmax.
         Will be returned with new columns day, actemp, anom, temp.mod
-        This runs things all at once, so it's much faster, but ignores engines.
+        This runs things all at once, so it's much faster, but only works without engines.
+        If engines are present, it switches to an incremental run.
+        Returns the predicted array (if context=False) or the data with an added prediction
+        column (if context=True).
         """
         data["day"] = data["date"].dt.day_of_year
         (result, outdata) = super().run_series(data, "date", period_col="day")
         if self.anomaly.quantiles is None:
-            return (result, outdata)
+            if context:
+                return outdata
+            return result
         # If we have quantiles, then outdata has a nonsensical prediction
         # column, and result is a matrix, not a column. Returning result
         # as-is is reasonable, but we should add names to it.
@@ -176,7 +181,9 @@ class Watershed(SCHEMA):
         result = pd.DataFrame(result, columns=names)
         outdata = pd.concat([outdata.drop(columns=["prediction"]),
                              result])
-        return (result, outdata)
+        if context:
+            return outdata
+        return result
 
     def from_data(data,
                   anomgam=None,
@@ -188,9 +195,6 @@ class Watershed(SCHEMA):
         """
         Train a watershed model from data.
         Requires columns date, temperature, tmax
-        threshold_engine: fit threshold sensitivity engine?
-        lin_ssn: fit linear seasonality engine?
-        names, xs, start, until: passed to linear seasonality trainer
         """
         data["day"] = data["date"].dt.day_of_year
         if len(data["day"].unique()) < 181:
