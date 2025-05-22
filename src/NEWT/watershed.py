@@ -24,15 +24,24 @@ def anomilize(data, obs=True):
 logalot = False
 
 class Seasonality(classes.Seasonality):
-    def __init__(self, ssn: rts.ThreeSine):
+    def __init__(self, ssn: rts.ThreeSine, quantiles=None):
         self.ssn = ssn
         self.timeseries = ssn.generate_ts()
+        self.quantiles = quantiles
     
     def apply(self, period):
-        return self.timeseries.iloc[period - 1]["actemp"]
+        res = self.timeseries.iloc[period - 1]["actemp"]
+        if self.quantiles is None:
+            return res
+        # So the dimensions agree
+        return np.array([res] * self.quantiles)
     
     def apply_vec(self, period_array):
-        return self.timeseries.iloc[period_array - 1]["actemp"].to_numpy()
+        res = self.timeseries.iloc[period_array - 1]["actemp"].to_numpy()
+        if self.quantiles is None:
+            return res
+        # So the dimensions agree
+        return np.tile(np.array([res]).transpose(), (1, self.quantiles))
     
     def from_dict(d):
         return Seasonality(rts.ThreeSine(**d))
@@ -58,6 +67,8 @@ class Anomaly(classes.Anomaly):
             self.quantiles = quantiles
     
     def apply_vec(self, periodic, period, anom_history):
+        if self.quantiles is not None:
+            periodic = periodic[:,0]  # it will be a matrix
         temp_hist = anom_history["tmax"].to_numpy()
         temp_anom = scipy.signal.fftconvolve(
             temp_hist, self.conv, mode="full"
@@ -80,6 +91,8 @@ class Anomaly(classes.Anomaly):
         return temp_anom
     
     def apply(self, periodic, period, anom_history):
+        if self.quantiles is not None:
+            periodic = periodic[0]  # it will be a vector
         res = self.apply_vec(np.array([periodic]), np.array([period]), anom_history)
         if self.quantiles is None:
             return res[0]  # just a vector
@@ -124,6 +137,8 @@ class Watershed(SCHEMA):
             seasonality = Seasonality(**seasonality)
         if type(anomaly) == dict:
             anomaly = Anomaly(**anomaly)
+        if anomaly.quantiles is not None:
+            seasonality.quantiles = len(anomaly.quantiles)
         at_day = at_day.rename(columns={"day": "period",
                                         "mean_tmax": "tmax"})
         super().__init__(seasonality,
@@ -134,8 +149,11 @@ class Watershed(SCHEMA):
                        max_period=365,
                        window=6,
                        logfile=logfile)
-        if anomaly.quantiles is not None:
-            for qn in anomaly.quantiles:
+    
+    def initialize_run(self, period: int):
+        super().initialize_run(period)
+        if self.anomaly.quantiles is not None:
+            for qn in self.anomaly.quantiles:
                 self.history[f"output_{qn}"] = []
     
     def coefs_to_df(self):
@@ -169,20 +187,16 @@ class Watershed(SCHEMA):
         column (if context=True).
         """
         data["day"] = data["date"].dt.day_of_year
-        (result, outdata) = super().run_series(data, "date", period_col="day")
         if self.anomaly.quantiles is None:
-            if context:
-                return outdata
-            return result
+            return super().run_series(data, "date", period_col="day", context=context)
         # If we have quantiles, then outdata has a nonsensical prediction
         # column, and result is a matrix, not a column. Returning result
         # as-is is reasonable, but we should add names to it.
+        result = super().run_series(data, "date", period_col="day", context=False)
         names = [f"prediction_{qn}" for qn in self.anomaly.quantiles]
         result = pd.DataFrame(result, columns=names)
-        outdata = pd.concat([outdata.drop(columns=["prediction"]),
-                             result])
         if context:
-            return outdata
+            return pd.concat([data, result])
         return result
 
     def from_data(data,
