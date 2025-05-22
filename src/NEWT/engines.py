@@ -17,6 +17,9 @@ class ClimateEngine(ModEngine):
     
     def apply(self, seasonality, anomaly, periodics, history):
         return self.coef_model(history)
+    
+    def to_dict(self):
+        return {"climate_engine": True}
 
 
 class WetDryEngine(ModEngine):

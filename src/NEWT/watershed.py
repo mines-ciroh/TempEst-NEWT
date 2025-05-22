@@ -47,6 +47,7 @@ class Anomaly(classes.Anomaly):
             raise ValueError("Anomaly.__init__: If `quantiles` is set, `anomgam` must also be set.")
         self.sensitivity = sensitivity
         self.anomgam = anomgam
+        self.anomnoise = anomnoise
         self.conv = conv
         if isinstance(quantiles, int):
             step = 1/(quantiles + 1)
