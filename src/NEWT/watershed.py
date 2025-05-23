@@ -83,6 +83,10 @@ class Anomaly(classes.Anomaly):
             self.quantiles = np.round(np.arange(step, 1, step), rounder)
         else:
             self.quantiles = quantiles
+        if self.quantiles is not None:
+            # Make sure exactly 0 or exactly 1 aren't included.
+            corrector = lambda c: 0.001 if c==0 else 0.999 if c==1 else c
+            self.quantiles = [corrector(c) for c in self.quantiles]
     
     def apply_vec(self, periodic, period, anom_history):
         if self.quantiles is not None:
