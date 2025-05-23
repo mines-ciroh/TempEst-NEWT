@@ -232,7 +232,7 @@ class Watershed(SCHEMA):
         names = [f"prediction_{qn}" for qn in self.anomaly.quantiles]
         result = pd.DataFrame(result, columns=names)
         if context:
-            return pd.concat([data, result])
+            return pd.concat([data, result], axis=1)
         return result
 
     def from_data(data,
