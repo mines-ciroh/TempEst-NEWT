@@ -6,13 +6,29 @@ import rtseason as rts
 import scipy
 import pandas as pd
 import numpy as np
-from yaml import load, dump, Loader
-from datetime import timedelta
-from NEWT import engines
-from NEWT.engines import ModEngine
 import pygam
+from libschema import SCHEMA
+import libschema.classes as classes
 
-def anomilize(data, obs=True):
+def anomilize(data: pd.DataFrame, obs=True) -> pd.DataFrame:
+    """
+    Add anomaly information, comparing the air and optionally water temperature
+    timeseries to their observed baselines.
+
+    Parameters
+    ----------
+    data : DataFrame
+        The input dataframe. Columns: date, tmax. Also temperature if obs is True.
+    obs : Bool, optional
+        Whether the data includes observed temperature. The default is True.
+
+    Returns
+    -------
+    data : DataFrame
+        Data frame with added columns: day, at_day and at_anom (air temperature),
+        optionally actemp and st_anom (water temperature).
+
+    """
     data["day"] = data["date"].dt.day_of_year
     if obs:
         data = data.merge(rts.ThreeSine.from_data(data[["day", "temperature"]]
@@ -23,430 +39,221 @@ def anomilize(data, obs=True):
     data["at_anom"] = data["tmax"] - data["tmax_day"]
     return data
 
-
-def ws_to_data(ssn, date, at_coef, at_day, at_conv, dyn_eng, dyn_period,
-               year_eng, year_period, climate_eng, climate_period,
-               ext_hist, history, logfile, anomgam):
-    """
-    Converts watershed data to a file in a consistent format.
-    """
-    ssn = {k: float(v[0]) for k, v in ssn.to_df().items()
-           if not k in ["R2", "RMSE"]}
-    atd_str = at_day[["day", "mean_tmax"]].to_dict()
-    at_coef = float(at_coef)
-    at_conv = at_conv.tolist()
-    data = {
-        "seasonality": ssn,
-        "date": str(date),
-        "at_coef": at_coef,
-        "at_conv": at_conv,
-        "at_day": atd_str,
-        "history": history.to_dict(),
-        "dynamic_engine": dyn_eng.to_dict() if dyn_eng is not None else None,
-        "dynamic_period": dyn_period,
-        "year_engine": year_eng.to_dict() if year_eng is not None else None,
-        "year_period": year_period,
-        "climate_engine": climate_eng.to_dict() if climate_eng is not None else None,
-        "climate_period": climate_period,
-        "ext_hist_col": ext_hist,
-        "logfile": logfile,
-        "anomgam": anomgam
-        }
-    return data
-
-
-def ws_from_data(coefs):
-    """
-    Generates watershed from coefficients dictionary.
-    """
-    ws = Watershed(rts.ThreeSine.from_coefs(pd.DataFrame(coefs["seasonality"], index=[0])),
-                   at_coef=coefs["at_coef"],
-                   at_day=pd.DataFrame(coefs["at_day"]),
-                   at_conv=np.array(coefs["at_conv"]),
-                   dynamic_engine=ModEngine.from_dict(coefs["dynamic_engine"]) if coefs["dynamic_engine"] is not None else None,
-                   dynamic_period=coefs["dynamic_period"],
-                   year_engine=ModEngine.from_dict(coefs["year_engine"]) if coefs["year_engine"] is not None else None,
-                   year_doy=coefs["year_period"],
-                   climate_engine=ModEngine.from_dict(coefs["climate_engine"]) if coefs["climate_engine"] is not None else None,
-                   climate_period=coefs["climate_period"],
-                   extra_history_columns=coefs["ext_hist_col"],
-                   logfile=coefs["logfile"],
-                   anomgam=coefs["anomgam"]
-                   )
-    ws.history = pd.DataFrame(coefs["history"])
-    ws.date = np.datetime64(coefs["date"]) if coefs["date"] is not None else None
-    return ws
-    
 logalot = False
 
-class Watershed(object):
-    basic_histcol = ["date", "day", "at", "actemp", "anom", "temp.mod"]
-    def __init__(self, seasonality, at_coef, at_day,
-                at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
-                dynamic_engine=None,
-                dynamic_period=1,
-                year_engine=None,
-                year_doy=180,
-                climate_engine=None,
-                climate_period=365,
-                extra_history_columns=[],
-                logfile=None,
-                anomgam=None,
-                quantiles=None,
-                anomnoise=0):
-        """
-        seasonality: a three-sine seasonality object
-        at_coef: air temperature anomaly coefficient
-        at_day: data frame of [day, mean_tmax]
-        at_conv: air temperature anomaly convolution
-        engines and periods: modification engines and recurrence periods in days
-            which update model coefficients.
-            dynamic_engine is for short-term adjustments at daily or near-daily
-                resolution, for example to adjust sensitivity.
-            year_engine (which recurs at a set day-of-year, not frequency)
-                is for annual adjustments, like changing seasonality for
-                a wet/dry year.
-            climate_engine is for updating watershed coefficients for
-                climate (atmospheric conditions).  It may also accept
-                a learning rate, or rate to approach atmospheric-driven
-                coefficients vs static coefficients, and a recency weight,
-                which drives how responsive the watershed is to changing
-                atmospheric conditions.
-            An engine must implement the engines.ModEngine class.
-        extra_history_columns: names of added columns to include in model
-            history (e.g., for use by modification engines).  All columns
-            specified must be provided for each step or specified through
-            setters.
-        anomgam: a trained GAM that takes seasonal temperature and
-            (smoothed + weighted) anomaly to predict adjusted ST anomaly.
-            If not provided, adjustment will not be applied.
-        anomnoise: a float quantifying anomaly prediction noisiness.
-        intervals: a list of quantiles to predict instead of a single value.
-            Alternatively, an integer number of quantiles to predict.  An odd number
-            is recommended to include 0.5 (median).
-            This applies to anomaly only, NOT seasonality.  The model must
-            be using an anomgam.
-        """
-        self.seasonality = seasonality
-        self.ssn_timeseries = seasonality.generate_ts()  # day, actemp
+class Seasonality(classes.Seasonality):
+    def __init__(self, ssn: rts.ThreeSine, quantiles=None):
+        self.ssn = ssn
+        self.timeseries = ssn.generate_ts()
+        self.quantiles = quantiles
+    
+    def apply(self, period: int):
+        res = self.timeseries.iloc[period - 1]["actemp"]
+        if self.quantiles is None:
+            return res
+        # So the dimensions agree
+        return np.array([res] * self.quantiles)
+    
+    def apply_vec(self, period_array: np.array):
+        res = self.timeseries.iloc[period_array - 1]["actemp"].to_numpy()
+        if self.quantiles is None:
+            return res
+        # So the dimensions agree
+        return np.tile(np.array([res]).transpose(), (1, self.quantiles))
+    
+    def from_dict(d):
+        return Seasonality(rts.ThreeSine(**d))
+    
+    def to_dict(self):
+        return self.ssn.to_dict()
+    
+class Anomaly(classes.Anomaly):
+    def __init__(self, at_coef, anomgam=None, quantiles=None, anomnoise=0,
+                 conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ])):
+        if anomgam is None and quantiles is not None:
+            raise ValueError("Anomaly.__init__: If `quantiles` is set, `anomgam` must also be set.")
         self.at_coef = at_coef
-        self.dailies = at_day
-        self.at_conv = at_conv
-        self.statics = {
-            "seasonality": seasonality,
-            "at_coef": at_coef,
-            "dailies": self.dailies.copy()
-            }
-        self.dynamic_engine = dynamic_engine
-        self.dynamic_period = dynamic_period
-        self.year_engine = year_engine
-        self.year_doy = year_doy
-        self.climate_engine = climate_engine
-        self.climate_period = climate_period
-        self.period = 0
-        self.date = None
-        self.histcol = [c for c in extra_history_columns if not c in
-                        self.basic_histcol]
-        self.logfile = logfile
         self.anomgam = anomgam
         self.anomnoise = anomnoise
-        if anomgam is None and quantiles is not None:
-            raise ValueError("Watershed.__init__: If `quantiles` is set, `anomgam` must also be set.")
+        self.conv = conv
         if isinstance(quantiles, int):
             step = 1/(quantiles + 1)
             # Rounding mitigates floating point errors
             rounder = max(2, int(np.log(quantiles) / np.log(10)))
             self.quantiles = np.round(np.arange(step, 1, step), rounder)
         else:
-            # List or None, don't need to do anything
             self.quantiles = quantiles
         if self.quantiles is not None:
-            for nm in ["anom", "temp.mod"]:
-                for q in self.quantiles:
-                    self.histcol.append(
-                        f"{nm}_{q}"
-                    )
+            # Make sure exactly 0 or exactly 1 aren't included.
+            corrector = lambda c: 0.001 if c==0 else 0.999 if c==1 else c
+            self.quantiles = [corrector(c) for c in self.quantiles]
+    
+    def apply_vec(self, periodic, period, anom_history):
+        if self.quantiles is not None:
+            periodic = periodic[:,0]  # it will be a matrix
+        temp_hist = anom_history["tmax"].to_numpy()
+        temp_anom = scipy.signal.fftconvolve(
+            temp_hist, self.conv, mode="full"
+            )[:-(len(self.conv) - 1)] * self.at_coef
+        if self.anomgam is not None:
+            temp_anom = self.anomgam.predict(
+                pd.DataFrame({"actemp": periodic,
+                             "at_anom": temp_anom[-len(periodic):]})
+                )
+        # Prevent 0-degree predictions
+        temp_anom[temp_anom < -periodic] = -periodic[temp_anom < -periodic]
+        if self.quantiles is not None:
+            anomq = self.anomgam.confidence_intervals(
+                pd.DataFrame({"actemp": periodic, "at_anom": temp_anom}),
+                quantiles=self.quantiles)
+            for (i, q) in enumerate(self.quantiles):
+                anom = anomq[:,i]
+                anomq[anom < -periodic,i] = -(periodic[anom < -periodic])
+            return anomq
+        return temp_anom
+    
+    def apply(self, periodic, period, anom_history):
+        if self.quantiles is not None:
+            periodic = periodic[0]  # it will be a vector
+        res = self.apply_vec(np.array([periodic]), np.array([period]), anom_history)
+        if self.quantiles is None:
+            return res[0]  # just a vector
+        return res[0,:]  # first row
+    
+    def to_dict(self):
+        return {
+            "at_coef": self.at_coef,
+            "anomgam": self.anomgam,
+            "quantiles": self.quantiles,
+            "anomnoise": self.anomnoise,
+            "conv": self.conv}
+    
+    def from_dict(d):
+        return Anomaly(**d)
         
+
+class Watershed(SCHEMA):
+    basic_histcol = ["date", "day", "tmax"]
+    def __init__(self,
+                 seasonality: Seasonality | dict,
+                 anomaly: Anomaly | dict,
+                 at_day: pd.DataFrame,
+                 engines: list[tuple[int, classes.ModEngine]],
+                 extra_columns: list[str]=[],
+                 logfile: str=None):
+        """
+        Initialize a Watershed object.
+
+        Parameters
+        ----------
+        seasonality : Seasonality | dict
+            a Seasonaly object or dictionary of {Intercept, Amplitude,
+            SpringSummer, FallWinter, SpringDay, SummerDay, FallDay,
+            WinterDay}.
+        anomaly : Anomaly | dict
+            an Anomaly object or dictionary of {at_coef} with optional
+            {anomgam, quantiles, anomnoise, conv}.
+        at_day : pd.DataFrame
+            data frame of [day, mean_tmax] or [period, tmax].
+        engines : list[tuple[int, classes.ModEngine]]
+            Modification engines to apply at specified frequencies.
+        extra_columns : list of strings, optional
+            history (e.g., for use by modification engines).  All columns
+            specified must be provided for each step or specified through
+            setters. The default is [].
+        logfile : str, optional
+            Where to store logs, if anywhere. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
+        if type(seasonality) == dict:
+            seasonality = Seasonality(**seasonality)
+        if type(anomaly) == dict:
+            anomaly = Anomaly(**anomaly)
+        if anomaly.quantiles is not None:
+            seasonality.quantiles = len(anomaly.quantiles)
+        at_day = at_day.rename(columns={"day": "period",
+                                        "mean_tmax": "tmax"})
+        super().__init__(seasonality,
+                       anomaly,
+                       at_day,
+                       engines,
+                       self.basic_histcol + extra_columns,
+                       max_period=365,
+                       window=6,
+                       logfile=logfile)
     
-    def from_file(filename, init=False, estimator=None):
-        if logalot:
-            print(f"Attempting to open file: {filename}")
-        try:
-            with open(filename) as f:
-                coefs = load(f, Loader)
-            ws = ws_from_data(coefs)
-            if init:
-                ws.initialize_run(coefs["date"])
-            return ws
-        except Exception as e:
-            with open("unspecified_log.txt", "w") as f:
-                f.write(f"Error in loading {filename}: {e}")
-    
-    def to_file(self, filename):
-        data = ws_to_data(self.seasonality, self.date, self.at_coef,
-                          self.dailies, self.at_conv, self.dynamic_engine,
-                          self.dynamic_period, self.year_engine,
-                          self.year_doy, self.climate_engine,
-                          self.climate_period, self.histcol,
-                          self.get_history(), self.logfile,
-                          self.anomgam)
-        with open(filename, "w") as f:
-            dump(data, f)
+    def initialize_run(self, period: int):
+        super().initialize_run(period)
+        if self.anomaly.quantiles is not None:
+            for qn in self.anomaly.quantiles:
+                self.history[f"output_{qn}"] = []
     
     def coefs_to_df(self):
-        base = self.seasonality.to_df().assign(
-            at_coef = self.at_coef
-            )
-        for engine in [self.dynamic_engine, self.year_engine,
-                       self.climate_engine]:
-            if engine is not None:
-                coefs = engine.coefficients()
-                for k in coefs:
-                    base[k] = coefs[k]
-        return base
-    
-    def log(self, text, reset=False):
-        if self.logfile is not None:
-            with open(self.logfile, "w" if reset else "a") as f:
-                f.write(text + "\n")
+        return pd.DataFrame([self.to_dict()])
 
-    def initialize_run(self, start=None):
-        # Logs allow efficient handling of a rolling anomaly
-        self.at_log = []
-        self.at = None
-        self.temperature = None
-        self.timestep = 0
-        self.date = pd.to_datetime(start)
-        self.extras = {x: None for x in self.histcol}
-        self.history = {x: [] for x in self.basic_histcol} | {x: [] for x in self.histcol}
-        if logalot:
-            self.log("Initialized model run")
-    
-    def get_history(self):
-        return pd.DataFrame(self.history)
-
-    # BMI: Getters and setters
-    def get_at(self):
-        return self.at
-    def set_at(self, at):
-        self.at = at
-    def get_st(self):
-        return self.temperature
-    def get_date(self):
-        return self.date
-    def set_date(self, date):
-        self.date = pd.to_datetime(date)
-    def set_extra(self, key, value):
-        self.extras[key] = value
-    def get_extras(self):
-        return self.extras
-        
-    def trigger_engine(self, engine):
-        """
-        For dynamic modification of model coefficients, we may trigger a
-        modification engine.  Triggering itself is handled in the stepper
-        function.
-
-        Here, we update coefficients as specified by the engine, then
-        regenerate anything as necessary.  The engine may modify seasonality
-        coefficients and sensitivity coefficients, as well as seasonality
-        baselines.
-        """
-        blend_window = 60
-        (self.seasonality, self.at_coef, self.dailies) =\
-            engine.apply(self.seasonality, self.at_coef, self.dailies,
-                    self.get_history(), self.statics)
-        # We want to smoothly blend it in, rather than an abrupt jump
-        ssnts = self.ssn_timeseries.rename(columns={"actemp": "oldtemp"}).merge(
-            self.seasonality.generate_ts(), on="day"
-            )
-        ssnts["weights"] = 1.0
-        window_overlap = self.doy + blend_window > 366
-        if window_overlap:
-            pos = (ssnts["day"] >= self.doy) | (ssnts["day"] < (self.doy + blend_window) % 366)
-        else:
-            pos = (ssnts["day"] >= self.doy) & (ssnts["day"] < self.doy + blend_window)
-        ssnts.loc[pos,
-                          "weights"] =\
-            np.arange(blend_window) / blend_window
-        ssnts["actemp"] = (ssnts["actemp"] * ssnts["weights"] +
-                            ssnts["oldtemp"] * (1-ssnts["weights"]))
-        self.ssn_timeseries = ssnts.drop(columns=["oldtemp", "weights"])
-    
-    def reset_coefs(self):
-        """
-        Reset coefficients, removing effects of any modification engines.
-        """
-        self.seasonality = self.statics["seasonality"]
-        self.at_coef = self.statics["at_coef"]
-        self.dailies = self.statics["dailies"].copy()
-        self.ssn_timeseries = self.seasonality.generate_ts()
-
-    def step(self, date=None, at=None, extras=None):
+    def run_step(self, inputs=None, period=None):
         """
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
-        if logalot:
-            self.log("Began step")
-        for k in self.histcol:
-            if (not k in extras) and (self.extras[k] is None):
-                raise ValueError(f"In step, must provide all specified extra data. Missing: {k}")
-        if extras is not None:
-            self.extras = extras
-        self.date = self.date + timedelta(1) if date is None else pd.to_datetime(date)
-        self.doy = self.date.day_of_year
-        today = self.dailies[self.dailies["day"] == self.doy]
-        at = at if at is not None else self.at
-        # prcp = prcp if prcp is not None else self.prcp
-        # swe = swe if swe is not None else self.swe
-        # srad = srad if srad is not None else self.srad
-        # "logs" allow efficient processing without having to grab the whole
-        # history.
-        self.at_log.append(at - today["mean_tmax"].iloc[0])
-        # Cut off beginning of logs if they're too long.
-        if len(self.at_log) > len(self.at_conv):
-            self.at_log = self.at_log[-len(self.at_conv):]
-        # Now, build the prediction
-        ssn = self.ssn_timeseries["actemp"][
-            self.ssn_timeseries["day"] == self.doy].iloc[0]
-        at_anom = np.convolve(self.at_log, self.at_conv, mode="valid")[-1]
-        anom = at_anom * self.at_coef
-        if self.anomgam is not None:
-            anom = self.anomgam.predict(np.array([[ssn, anom]]))[0]
-        if self.quantiles is not None:
-            # Function uncertainty
-            anomq = self.anomgam.confidence_intervals(np.array([[ssn, anom]]),
-                                                      quantiles=self.quantiles)[0,:]
-            # Noise
-            anomq += scipy.stats.norm.ppf(self.quantiles) * self.anomnoise
-            anomq[anomq < -ssn] = -ssn
-            predq = anomq + ssn
-            for (nm, vals) in [("anom", anomq), ("temp.mod", predq)]:
-                for (i, q) in enumerate(self.quantiles):
-                    self.history[f"{nm}_{q}"].append(vals[i])
-        pred = ssn + anom
-        pred = pred if pred >= 0 else 0
-        self.temperature = pred
-        # Update history
-        self.history["date"].append(self.date)
-        self.history["day"].append(self.doy)
-        self.history["at"].append(at)
-        self.history["actemp"].append(ssn)
-        self.history["anom"].append(anom)
-        self.history["temp.mod"].append(pred)            
-        for k in self.histcol:
-            self.history[k].append(self.extras[k])
-        # self.history["swe"].append(swe)
-        # self.history["prcp"].append(prcp)
-        # self.history["srad"].append(srad)
-        # Run triggers
-        self.period += 1
-        if (self.climate_engine is not None and
-            self.period % self.climate_period == 0):
-            self.trigger_engine(self.climate_engine)
-        if (self.year_engine is not None and
-            self.doy == self.year_doy):
-            self.trigger_engine(self.year_engine)
-        if (self.dynamic_engine is not None and 
-            self.period % self.dynamic_period == 0):
-            self.trigger_engine(self.dynamic_engine)
-        self.timestep += 86400  # seconds per day
-        if logalot:
-            self.log(f"Concluded step; predicted ST: {self.temperature}")
-        # Result
-        if self.quantiles is None:
-            return pred
-        else:
-            return predq
-    
-    def run_series_incremental(self, data):
-        """
-        Run a full timeseries at once, but internally use the stepwise approach.
-        data must have columns date (as an actual date type), tmax.
-        Will be returned with columns date, day, at, actemp, anom, temp.mod
-        """
-        self.initialize_run()
-        for row in data.itertuples():
-            extras = {k: getattr(row, k) for k in self.histcol}
-            yield self.step(row.date, row.tmax, extras)
-        
+        step = super().run_step(inputs, period)
+        # If there are quantiles, then the prediction is a vector, not a single value.
+        # In that case, history["output"] just got a vector appended, and the
+        # step above is a vector.
+        # Returning the vector is reasonable, but we need to fix the history.
+        if self.anomaly.quantiles is not None:
+            for (i, qn) in enumerate(self.anomaly.quantiles):
+                self.history[f"output_{qn}"].append(step[i])
+            # Use the mean for the single-output column.
+            self.history["output"][-1] = np.mean(self.history["output"][-1])
+        return step
 
-    def run_series(self, data):
+    def run_series(self, data, context=True):
         """
         Run a full timeseries at once.
-        data must have columns date (as an actual date type), tmax.
+        data must have columns date (as an actual date type), day, tmax.
         Will be returned with new columns day, actemp, anom, temp.mod
-        This runs things all at once, so it's much faster, but ignores engines.
+        This runs things all at once, so it's much faster, but only works without engines.
+        If engines are present, it switches to an incremental run.
+        Returns the predicted array (if context=False) or the data with an added prediction
+        column (if context=True).
         """
-        # _ = list(self.run_series_incremental(data))
-        # res = self.get_history()[["date", "actemp", "anom", "temp.mod"]]
-        # return data.merge(res, on="date")
-        data = data.copy()
         data["day"] = data["date"].dt.day_of_year
-        anoms = anomilize(data, obs=False)
-        data = data.merge(self.ssn_timeseries[["day", "actemp"]], on="day", how="left").merge(anoms[["date", "at_anom"]], on="date", how="left")
-        data["at_anom"] = scipy.signal.fftconvolve(data["at_anom"], self.at_conv, mode="full")[:-(len(self.at_conv) - 1)] * self.at_coef
-        if self.anomgam is not None:
-            data["anom"] = self.anomgam.predict(data[["actemp", "at_anom"]])
-        else:
-            data["anom"] = data["at_anom"]
-        data["temp.mod"] = data["actemp"] + data["anom"]
-        data.loc[data["temp.mod"] < 0, "temp.mod"] = 0
-        if self.quantiles is not None:
-            anomq = self.anomgam.confidence_intervals(data[["actemp", "at_anom"]],
-                                                      quantiles=self.quantiles)
-            for (i, q) in enumerate(self.quantiles):
-                anomcol = f"anom_{q}"
-                predcol = f"temp.mod_{q}"
-                ssn = data["actemp"]
-                anom = anomq[:,i]
-                anom[anom < -ssn] = -(ssn[anom < -ssn])
-                data[anomcol] = anom
-                data[predcol] = ssn + anom
-        return data.drop(columns=["at_anom"])
+        if self.anomaly.quantiles is None:
+            return super().run_series(data, "date", period_col="day", context=context)
+        # If we have quantiles, then outdata has a nonsensical prediction
+        # column, and result is a matrix, not a column. Returning result
+        # as-is is reasonable, but we should add names to it.
+        result = super().run_series(data, "date", period_col="day", context=False)
+        names = [f"prediction_{qn}" for qn in self.anomaly.quantiles]
+        result = pd.DataFrame(result, columns=names)
+        if context:
+            return pd.concat([data, result], axis=1)
+        return result
 
     def from_data(data,
-                  threshold_engine=False,
-                  lin_ssn=False,
                   anomgam=None,
-                  names=["Intercept", "Amplitude", "SummerDay"],
-                  xs=["at"],
-                  start=330,
-                  until=30,
                   at_conv=np.array([0.132, 0.401, 0.162, 0.119, 0.056, 0.13 ]),
-                  extra_history_columns=[],
+                  extra_columns=[],
                   use_anomgam=True,
+                  quantiles=None,
                   **kwargs):
         """
         Train a watershed model from data.
         Requires columns date, temperature, tmax
-        threshold_engine: fit threshold sensitivity engine?
-        lin_ssn: fit linear seasonality engine?
-        names, xs, start, until: passed to linear seasonality trainer
         """
-        linear_ssn = (
-            engines.LinearSeasonEngine.from_data(
-                data.rename(columns={"tmax": "at"}),
-                                      names, xs, start, until) if
-            lin_ssn else None)
         data["day"] = data["date"].dt.day_of_year
         if len(data["day"].unique()) < 181:
             return None
         anoms = anomilize(data)
         at_day = data.groupby(["day"], as_index=False)["tmax"].mean().rename(columns={"tmax": "mean_tmax"})
         ssn = rts.ThreeSine.from_data(data[["day", "temperature"]])
-        uncal_prd = Watershed(ssn, 0, at_day,
-                              year_engine=linear_ssn, year_doy=until,
-                              extra_history_columns=extra_history_columns).\
-            run_series(data) if lin_ssn else None
-        anoms = anoms.drop(columns=["temperature", "st_anom"]).merge(
-            uncal_prd[["date", "temp.mod", "temperature"]], on="date").assign(
-                st_anom = lambda x: x["temperature"] - x["temp.mod"]) if lin_ssn else anoms
         anoms["anom_atmod"] = scipy.signal.fftconvolve(anoms["at_anom"],
                                                        at_conv, mode="full")[:-(len(at_conv) - 1)]
-        thres_eng = engines.ThresholdSensitivityEngine.from_data(
-            anoms, use_at=False) if threshold_engine else None
         sol = np.linalg.lstsq(np.array(anoms[["anom_atmod"
                                               # ,"anom_hummod"
                                               ]]), anoms["st_anom"].to_numpy().transpose(), rcond=None)[0]
@@ -458,8 +265,9 @@ class Watershed(object):
             y = anoms["st_anom"]
             anomgam = pygam.LinearGAM(pygam.te(0, 1)).fit(X, y)
             anomnoise = np.sqrt(np.mean((anomgam.predict(X) - y)**2))
-        return Watershed(ssn, at_coef, at_day, at_conv,
-                         year_engine=linear_ssn, year_doy=until,
-                         dynamic_engine=thres_eng, dynamic_period=7,
-                         extra_history_columns=extra_history_columns,
-                         anomgam=anomgam, anomnoise=anomnoise, **kwargs)
+        return Watershed(Seasonality(ssn),
+                         Anomaly(at_coef, anomgam, quantiles, anomnoise, at_conv),
+                         at_day,
+                         [],
+                         extra_columns,
+                         **kwargs)
