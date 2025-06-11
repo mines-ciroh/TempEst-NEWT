@@ -8,6 +8,7 @@ import numpy as np
 import rtseason as rts
 import NEWT.analysis as analysis
 from libschema.classes import ModEngine
+from pygam import LinearGAM, s
 
 class ClimateEngine(ModEngine):
     def __init__(self, coef_model):
@@ -22,5 +23,57 @@ class ClimateEngine(ModEngine):
         return {"climate_engine": True}
 
 
+def wetDryHistory(data):
+    data["year"] = data["date"].dt.year + (data["date"].dt.month > 9)
+    data["tmax_early"] = data["tmax"] * (data["date"].dt.month.isin(self.month_range)  # try early-year conditions only
+    data["prcp_early"] = data["prcp"] * (data["date"].dt.month.isin(self.month_range)
+    var = ["tmax", "prcp", "tmax_early", "prcp_early"]
+    means = data.groupby("year")[var].mean()
+    return (means - data[var].mean()).merge(means, suffixes=["", "_base"], on="year")
+
+def wetDryFn(gam, xvar):
+    def inner(ssn, history):
+        preds = history.copy()
+        ssn_inp = ssn.to_dict()
+        for v in ssn_inp:
+            preds[v] = ssn_inp[v]
+        return gam(preds[xvar])[0]
+
 class WetDryEngine(ModEngine):
-    pass
+    month_range = [12, 1, 2, 3, 4]
+    var_sets = {
+    	"Intercept": ['tmax', 'tmax_early'],
+    	"Amplitude": ['Intercept_ref', 'FallWinter_ref', 'tmax', 'prcp', 'tmax_early', 'prcp_early', 'tmax_base', 'tmax_early_base'],
+    	"WinterDay": ['Intercept_ref', 'Amplitude_ref', 'WinterDay_ref', 'tmax_early', 'tmax_base']
+    }
+    
+    def __init__(self, models):
+        # models: dictionary of variable -> function(Seasonality, history -> Seasonality)
+        self.models = models
+        self.orig_ssn = None
+
+    def apply(self, seasonality, anomaly, periodics, history):
+        ssn_dict = seasonality.to_dict()
+        history = wetDryHistory(history)
+        for var in self.models:
+            ssn_dict[var] = self.models[var](seasonality, history)
+        new_ssn = seasonality.from_dict(ssn_dict)
+        return (new_ssn, anomaly, periodics)
+
+    def from_data(coefs, year_coefs, data, month_range=None, var_sets=None):
+        # Coefs: data frame with id and Seasonality terms
+        # year_coefs: also with year column (water year)
+        # data: date, tmax, prcp
+        # month_range: override self.month_range. List of integer months.
+        # var_sets: override self.var_sets. dictionary of coefficient -> predictor variables.
+        if month_range is not None:
+            self.month_range = month_range
+        if var_sets is not None:
+            self.var_sets = var_sets
+        preds = data.groupby("id").apply(wetDryHistory, include_groups=False)
+        inpdata = coefs.merge(year_coefs, on="id", suffixes=["_ref", ""]).merge(preds, on=["id", "year"]).dropna()
+        models = {var: wetDryFn(LinearGAM(sum([s(i) for i in range(1, len(self.var_sets[var]))], start=s(0)), lam=10
+                                         ).fit(inpdata[self.var_sets[var]], inpdata[var]),
+                                self.var_sets[var])
+                  for var in self.var_sets}
+        return WetDryEngine(models)
