@@ -25,8 +25,8 @@ class ClimateEngine(ModEngine):
 
 def wetDryHistory(data):
     data["year"] = data["date"].dt.year + (data["date"].dt.month > 9)
-    data["tmax_early"] = data["tmax"] * (data["date"].dt.month.isin(self.month_range)  # try early-year conditions only
-    data["prcp_early"] = data["prcp"] * (data["date"].dt.month.isin(self.month_range)
+    data["tmax_early"] = data["tmax"] * (data["date"].dt.month.isin(self.month_range))  # try early-year conditions only
+    data["prcp_early"] = data["prcp"] * (data["date"].dt.month.isin(self.month_range))
     var = ["tmax", "prcp", "tmax_early", "prcp_early"]
     means = data.groupby("year")[var].mean()
     return (means - data[var].mean()).merge(means, suffixes=["", "_base"], on="year")
