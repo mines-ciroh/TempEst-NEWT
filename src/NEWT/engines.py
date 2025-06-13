@@ -23,10 +23,10 @@ class ClimateEngine(ModEngine):
         return {"climate_engine": True}
 
 
-def wetDryHistory(data):
+def wetDryHistory(data, month_range):
     data["year"] = data["date"].dt.year + (data["date"].dt.month > 9)
-    data["tmax_early"] = data["tmax"] * (data["date"].dt.month.isin(self.month_range))  # try early-year conditions only
-    data["prcp_early"] = data["prcp"] * (data["date"].dt.month.isin(self.month_range))
+    data["tmax_early"] = data["tmax"] * (data["date"].dt.month.isin(month_range))  # try early-year conditions only
+    data["prcp_early"] = data["prcp"] * (data["date"].dt.month.isin(month_range))
     var = ["tmax", "prcp", "tmax_early", "prcp_early"]
     means = data.groupby("year")[var].mean()
     return (means - data[var].mean()).merge(means, suffixes=["", "_base"], on="year")
@@ -47,14 +47,18 @@ class WetDryEngine(ModEngine):
     	"WinterDay": ['Intercept_ref', 'Amplitude_ref', 'WinterDay_ref', 'tmax_early', 'tmax_base']
     }
     
-    def __init__(self, models):
+    def __init__(self, models, month_range=None, var_sets=None):
         # models: dictionary of variable -> function(Seasonality, history -> Seasonality)
         self.models = models
         self.orig_ssn = None
+        if month_range is not None:
+            self.month_range = month_range
+        if var_sets is not None:
+            self.var_sets = var_sets
 
     def apply(self, seasonality, anomaly, periodics, history):
         ssn_dict = seasonality.to_dict()
-        history = wetDryHistory(history)
+        history = wetDryHistory(history, self.month_range)
         for var in self.models:
             ssn_dict[var] = self.models[var](seasonality, history)
         new_ssn = seasonality.from_dict(ssn_dict)
@@ -66,14 +70,14 @@ class WetDryEngine(ModEngine):
         # data: date, tmax, prcp
         # month_range: override self.month_range. List of integer months.
         # var_sets: override self.var_sets. dictionary of coefficient -> predictor variables.
-        if month_range is not None:
-            self.month_range = month_range
-        if var_sets is not None:
-            self.var_sets = var_sets
-        preds = data.groupby("id").apply(wetDryHistory, include_groups=False)
+        if month_range is None:
+            month_range = WetDryEngine.month_range
+        if var_sets is None:
+            var_sets = WetDryEngine.var_sets
+        preds = data.groupby("id").apply(lambda x: wetDryHistory(x, month_range), include_groups=False)
         inpdata = coefs.merge(year_coefs, on="id", suffixes=["_ref", ""]).merge(preds, on=["id", "year"]).dropna()
         models = {var: wetDryFn(LinearGAM(sum([s(i) for i in range(1, len(self.var_sets[var]))], start=s(0)), lam=10
                                          ).fit(inpdata[self.var_sets[var]], inpdata[var]),
                                 self.var_sets[var])
                   for var in self.var_sets}
-        return WetDryEngine(models)
+        return WetDryEngine(models, month_range, var_sets)
