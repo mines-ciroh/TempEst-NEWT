@@ -8,7 +8,6 @@ import numpy as np
 import rtseason as rts
 import NEWT.analysis as analysis
 from libschema.classes import ModEngine
-from pygam import LinearGAM, s
 from NEWT.watershed import Seasonality, Anomaly
 
 class ClimateEngine(ModEngine):
@@ -24,68 +23,301 @@ class ClimateEngine(ModEngine):
         return {"climate_engine": True}
 
 
-def wetDryHistory(data, month_range):
+def wetDryHistory(data, offset, scale, pcs):
+    # Return PCA'ed wet/dry anomalies
+    col_order = ['tmax_1_anom', 'tmax_2_anom', 'tmax_3_anom', 'tmax_4_anom', 'tmax_5_anom', 'tmax_6_anom', 'tmax_7_anom', 'tmax_8_anom', 'tmax_9_anom', 'tmax_10_anom', 'tmax_11_anom', 'tmax_12_anom', 'prcp_1_anom', 'prcp_2_anom', 'prcp_3_anom', 'prcp_4_anom', 'prcp_5_anom', 'prcp_6_anom', 'prcp_7_anom', 'prcp_8_anom', 'prcp_9_anom', 'prcp_10_anom', 'prcp_11_anom', 'prcp_12_anom']
     data["year"] = data["date"].dt.year + (data["date"].dt.month > 9)
-    data["tmax_early"] = data["tmax"] * (data["date"].dt.month.isin(month_range))  # try early-year conditions only
-    data["prcp_early"] = data["prcp"] * (data["date"].dt.month.isin(month_range))
-    var = ["tmax", "prcp", "tmax_early", "prcp_early"]
-    means = data.groupby("year")[var].mean()
-    return (means - data[var].mean()).merge(means, suffixes=["", "_base"], on="year")
+    data["month"] = data["date"].dt.month
+    inps = data.loc[:, ["month", "year", "tmax", "prcp"]].groupby(["month", "year"]).mean().reset_index()
+    inps = inps.pivot(index="year", columns="month", values=["tmax", "prcp"])
+    inps.columns = ["_".join([str(s) for s in nms]) + "_anom" for nms in inps.columns.values]
+    anoms = (inps - inps.mean())
+    # Make sure we have the correct column order and no NAs.
+    df = pd.DataFrame(((anoms - offset)/scale)[col_order].fillna(0) @ np.transpose(pcs))
+    # This causes it not to break if anoms is already a dataframe.
+    df.columns=[f"anom_pc{x}" for x in range(pcs.shape[0])]
+    return df
 
-class WetDryRunner(object):
-    # Helper class for a pickle-able higher-order function.
-    def __init__(self, gam, xvar):
-        self.gam = gam
-        self.xvar = xvar
-    
-    def apply(self, ssn, history):
-        preds = history.copy()
-        ssn_inp = ssn.to_dict()
-        for v in ssn_inp:
-            preds[v + "_ref"] = ssn_inp[v]
-        return self.gam.predict(preds[self.xvar])[0]
 
 class WetDryEngine(ModEngine):
-    month_range = [12, 1, 2, 3, 4]
-    var_sets = {
-    	"Intercept": ['tmax', 'tmax_early'],
-    	"Amplitude": ['Intercept_ref', 'FallWinter_ref', 'tmax', 'prcp', 'tmax_early', 'prcp_early', 'tmax_base', 'tmax_early_base'],
-    	"WinterDay": ['Intercept_ref', 'Amplitude_ref', 'WinterDay_ref', 'tmax_early', 'tmax_base']
-    }
+    variables = ["Amplitude", "FallWinter", "Intercept", "SpringSummer"]
+    coefficients = np.array([[-0.0005052 ,  0.20950815,  0.00878928,  0.27126956],
+                               [ 0.02483909,  0.03893097,  0.23097838, -0.08972917],
+                               [-0.18165192,  0.03533642,  0.0376597 , -0.04843433],
+                               [-0.11882707, -0.02540745,  0.0872312 ,  0.09682372],
+                               [ 0.11377387, -0.03922007, -0.05867647, -0.19380713],
+                               [ 0.00695277, -0.05728106, -0.0050682 , -0.03441679],
+                               [-0.09729149, -0.15457463, -0.04012739,  0.1094664 ],
+                               [ 0.03810666, -0.00421428,  0.04688826, -0.00968003],
+                               [-0.02978966, -0.01732264,  0.03163223, -0.05764028],
+                               [-0.07078723,  0.00972933,  0.03174617,  0.02962073],
+                               [-0.09364882, -0.0618068 ,  0.02496836,  0.1010218 ],
+                               [ 0.01003955,  0.07616144, -0.07250772,  0.09110184],
+                               [-0.1211358 ,  0.01166767, -0.00616139,  0.0322868 ],
+                               [-0.09323389,  0.04177228,  0.10193825, -0.02004063],
+                               [ 0.01498119,  0.11652247, -0.01487626,  0.03793324],
+                               [ 0.04443768,  0.16149348, -0.05055509, -0.01486221],
+                               [-0.05967385,  0.01504736, -0.02869132,  0.07218751],
+                               [ 0.05059341,  0.0044748 ,  0.01692253,  0.03422162],
+                               [-0.01654923, -0.13983716,  0.04076389, -0.06276745],
+                               [ 0.09192067,  0.15357204, -0.02941425,  0.08073295]])
+    pc_fit = np.array([[ 1.78448251e-01,  1.42709343e-01,  3.95463780e-01,
+                         2.08135443e-01,  1.98240525e-01,  4.26967297e-01,
+                         2.95903767e-01,  1.26097507e-01, -1.19611786e-01,
+                         1.27733177e-01,  2.01187014e-01,  2.18794091e-01,
+                        -1.18430122e-01, -3.30709761e-02, -1.61873524e-01,
+                        -2.66035665e-01, -2.64834974e-01, -3.29201348e-01,
+                        -4.47227019e-02,  3.10711344e-02,  7.74043235e-02,
+                        -4.73086655e-02,  4.54544152e-02,  1.33724790e-02],
+                       [ 3.20460446e-01,  2.60926901e-01,  1.14116091e-01,
+                         6.79676211e-02, -2.08912198e-01, -5.54946670e-02,
+                        -2.67133220e-01, -4.37442327e-01, -2.63705331e-01,
+                         1.56966021e-01,  1.45365418e-01,  4.44699971e-02,
+                         1.51338243e-02, -1.36097365e-01, -7.24610755e-02,
+                        -1.24256899e-02,  1.75981445e-01,  3.70865529e-02,
+                         3.84371972e-01,  2.38485394e-01,  1.03381736e-01,
+                        -2.13513894e-01, -2.37517761e-01, -1.05088454e-01],
+                       [ 2.58176242e-01,  1.87981020e-01,  1.17008107e-01,
+                         2.16458320e-01, -2.22006728e-01, -1.11127334e-01,
+                         4.84185786e-02,  1.11158354e-01,  4.19810694e-01,
+                        -5.85908031e-02,  2.14142289e-02,  2.74768208e-01,
+                         5.60907001e-02, -2.73552720e-01,  3.30019615e-02,
+                        -7.16107662e-02,  1.58551480e-01,  1.47773735e-01,
+                        -6.63518720e-04, -2.29383948e-01, -5.22586323e-01,
+                        -1.53202014e-01,  1.25085758e-01,  9.74416365e-02],
+                       [-2.59484015e-01, -3.22268264e-01, -1.95286249e-01,
+                         3.96239149e-01,  2.53620561e-01,  9.66020717e-02,
+                        -3.17853928e-01, -1.10052614e-01,  1.05392195e-01,
+                        -6.71144276e-02, -8.39857208e-03,  1.00017137e-02,
+                         1.15475659e-01, -3.39113390e-03, -1.31854095e-01,
+                        -4.39160466e-01, -1.49022332e-01,  7.88806418e-02,
+                         2.11566354e-01, -1.72726312e-01, -5.17042049e-02,
+                        -2.68450720e-01, -1.72427807e-01, -1.79973384e-04],
+                       [-6.73877280e-02, -4.08782264e-02,  3.14616330e-02,
+                         6.46777954e-02, -1.33616541e-01,  9.99457566e-02,
+                        -1.92201141e-01, -1.28829313e-01, -1.12150616e-01,
+                        -4.47024940e-02, -1.63774653e-01, -2.15416433e-01,
+                        -2.51252692e-01, -2.97981761e-01, -2.99489114e-01,
+                         2.28411923e-02, -6.90296147e-02, -1.70606196e-02,
+                         1.23518872e-01,  5.23924625e-02, -6.63803503e-03,
+                         1.64759741e-01,  4.35368495e-01,  5.80948765e-01],
+                       [ 1.25003122e-02, -3.78198013e-01,  2.69962941e-01,
+                        -1.59941297e-01, -3.68214305e-01, -2.32209802e-02,
+                        -1.25754678e-01,  1.39875508e-01, -2.31770432e-02,
+                        -4.20145985e-01,  1.29693755e-01,  3.53126478e-01,
+                         9.09774826e-02,  2.25740261e-01, -2.00676398e-02,
+                        -1.58598240e-01,  6.89702751e-02, -1.22134250e-01,
+                         2.29230072e-01,  8.33498364e-02,  4.10869073e-02,
+                         2.72753996e-01, -1.12827692e-01,  1.24490438e-01],
+                       [-1.03349329e-01,  1.28478791e-01,  1.06517798e-01,
+                        -2.31361114e-02,  7.60730834e-02, -1.30604590e-01,
+                        -3.33637489e-03,  3.12454787e-01,  1.16361899e-01,
+                        -1.96575498e-01,  4.45995928e-01, -2.26910082e-01,
+                        -9.75902658e-02, -3.02535175e-01, -3.66050093e-01,
+                        -5.41816440e-02,  2.40059163e-01,  2.53995619e-01,
+                        -9.14855010e-02, -9.32948721e-02,  3.39271060e-01,
+                         3.60320958e-02, -2.09584083e-01, -1.84487015e-02],
+                       [-1.78146633e-01,  2.18513950e-01, -3.23098745e-02,
+                         1.77040626e-01, -1.20301794e-01,  1.26915873e-01,
+                        -2.81441522e-02,  9.19418110e-02,  1.80397674e-01,
+                         5.95750558e-02,  3.27251026e-01, -3.50570956e-01,
+                         6.92223828e-02,  2.22420155e-01,  5.00482756e-01,
+                        -1.85412666e-01,  2.72021222e-01, -2.27532347e-01,
+                         1.79059400e-01,  7.84567517e-02,  8.11877971e-02,
+                        -1.58416876e-02,  1.74804458e-01,  2.04230902e-01],
+                       [ 2.44110635e-01, -7.90667078e-02,  4.74084898e-02,
+                         2.02146270e-01,  1.24937911e-01, -1.77899675e-01,
+                         1.71671391e-01, -1.88070288e-01,  1.52803252e-01,
+                        -2.14040920e-01,  1.70818157e-01, -1.88778979e-01,
+                         9.45564599e-02,  1.98248647e-01, -2.01606225e-02,
+                        -1.19405075e-01, -2.53972713e-01,  3.66530045e-01,
+                        -1.52330751e-01,  5.70672162e-01, -8.93270896e-02,
+                         9.11063532e-02,  1.28841555e-01,  3.82714204e-02],
+                       [-2.64751228e-01,  1.73478212e-01,  5.16937831e-03,
+                         5.16134192e-02, -1.78129963e-01,  4.45578342e-02,
+                         1.09605482e-01, -1.52557901e-01, -5.39881222e-02,
+                         1.26486157e-01, -4.70979123e-02,  6.17040165e-02,
+                         5.91427242e-01,  1.57929506e-01, -3.70042619e-01,
+                        -6.85399430e-03,  1.74895195e-01, -9.36501790e-02,
+                        -3.59696237e-01,  7.55711692e-02, -4.02124006e-02,
+                        -5.61335512e-02, -1.49638970e-01,  2.99770035e-01],
+                       [ 8.64448088e-02, -3.17519580e-01,  7.55872539e-02,
+                         4.09118636e-01, -3.14358644e-01,  4.41707069e-02,
+                         1.77070315e-01, -6.85929536e-02, -2.82057095e-01,
+                        -1.29755069e-01, -8.53544373e-02, -1.39012681e-01,
+                        -2.03462683e-02,  3.20067645e-02, -2.38272020e-02,
+                        -2.56011723e-04,  3.13022216e-01,  4.25358355e-02,
+                        -2.26650570e-01, -1.72601830e-01,  1.78240356e-01,
+                        -1.64838865e-01,  3.23717024e-01, -3.34796750e-01],
+                       [ 5.24908538e-02,  1.12015401e-01,  2.21797595e-01,
+                         2.53678902e-01, -1.05186871e-01, -1.63273109e-01,
+                        -1.73980959e-01,  1.14510682e-01, -3.89027179e-01,
+                        -1.02252435e-01,  8.84559919e-02, -1.86827497e-01,
+                         2.02278044e-01, -6.08413536e-02,  3.05662801e-01,
+                         1.61362017e-01, -4.45773870e-01,  9.60138459e-02,
+                        -1.31706823e-01, -3.23686969e-01, -5.25519129e-02,
+                         9.88015059e-02, -2.22747404e-01,  1.70998967e-01],
+                       [ 2.20001269e-01,  1.93482436e-01,  8.93363450e-02,
+                         4.99117149e-02,  2.32842386e-01, -2.44313993e-02,
+                        -4.56539642e-02,  8.90558844e-02, -8.81618902e-03,
+                         1.29849446e-01, -1.03352900e-01,  6.91039966e-02,
+                         1.47574448e-01,  5.15489404e-01, -2.01276099e-01,
+                         4.81358098e-02,  9.81346892e-02,  3.39436392e-01,
+                         3.11481975e-01, -3.53344211e-01,  1.85480339e-01,
+                         1.58441597e-01,  2.54295392e-01,  7.23753407e-02],
+                       [ 1.03759952e-01,  2.02044996e-01, -9.09883507e-02,
+                         7.45851674e-02,  5.86497800e-02,  7.01415755e-02,
+                         1.63057041e-01, -1.52501569e-01, -7.98255238e-02,
+                        -1.16653807e-01, -3.90064508e-01, -2.13083789e-02,
+                        -6.60451998e-02, -1.52869196e-01,  1.82181153e-01,
+                        -4.85758025e-01,  2.29538451e-01,  9.84768074e-02,
+                        -9.17180953e-02, -6.50920945e-02,  6.85087678e-02,
+                         5.03259138e-01, -2.70724367e-01,  2.46951783e-02],
+                       [-1.17047137e-02,  7.86065708e-02, -7.58969175e-02,
+                         3.46541395e-02,  4.49094615e-02,  2.00734732e-01,
+                         2.18905738e-01, -6.60687392e-02, -8.89164848e-03,
+                        -3.13627853e-01,  3.81161045e-02, -3.64373672e-01,
+                         2.35551487e-01, -5.66449414e-02, -2.49404683e-01,
+                         2.17409594e-01, -2.64346814e-02, -2.29281363e-01,
+                         3.88223661e-01, -8.03995657e-02, -3.63069564e-01,
+                         2.38907141e-01, -4.49788006e-02, -2.99886182e-01],
+                       [-2.09755739e-01,  8.39861009e-02,  9.87765476e-02,
+                        -1.31488012e-01,  1.42938929e-01, -2.40313114e-01,
+                         2.07029212e-01,  7.70021810e-02, -1.29513362e-01,
+                        -1.19980380e-01, -1.38202005e-01,  1.64471722e-01,
+                         4.51035348e-01, -3.96742224e-01,  1.75469126e-01,
+                        -1.41298665e-01, -8.40278255e-02,  4.25009632e-02,
+                         2.73320423e-01,  1.14072293e-01,  2.42772508e-01,
+                        -1.32857067e-01,  3.56135598e-01, -7.75451330e-02],
+                       [-2.34241661e-01, -6.80943928e-02,  1.47588296e-01,
+                         5.29099343e-02, -1.71242137e-01,  2.75386254e-01,
+                        -2.64083452e-02,  4.51293741e-01, -1.95008464e-01,
+                         3.56009031e-01, -1.50884606e-01, -7.46398474e-02,
+                         6.35097224e-03, -3.31785040e-02,  1.42581273e-03,
+                        -3.29396607e-02,  6.01385395e-02,  4.22936012e-01,
+                         1.55093534e-01,  3.22118973e-01, -2.66031557e-01,
+                         6.75866371e-02, -8.59625194e-02, -1.34218771e-01],
+                       [-2.62983232e-01, -6.69756995e-02,  2.19477159e-02,
+                         4.80627723e-01,  2.49935877e-01,  1.18131117e-02,
+                         1.15495553e-01, -1.36869176e-01,  3.27618753e-02,
+                        -1.31325501e-02,  8.83275887e-02,  3.81364564e-01,
+                        -9.34647658e-02, -9.76918537e-02,  1.38483042e-01,
+                         5.01080176e-01,  2.02808399e-01,  4.56177870e-02,
+                         1.00250323e-01,  1.23717744e-01,  8.04031190e-02,
+                         2.41702973e-01, -1.06434631e-01,  1.11278788e-01],
+                       [ 3.64092580e-01, -1.19791943e-01, -1.17510647e-01,
+                         1.77385558e-01, -1.32150702e-01,  1.32140333e-01,
+                         9.84593697e-02,  2.95378881e-01,  3.13708287e-01,
+                        -1.88133050e-02, -3.75676997e-01, -1.44377909e-01,
+                         1.61402483e-01, -8.05675891e-02,  1.22058408e-03,
+                         2.09406254e-01, -8.85379123e-02, -1.06257368e-01,
+                         1.40857017e-01,  1.33255425e-01,  3.83510794e-01,
+                        -1.73906349e-01, -2.66469446e-01,  1.83705456e-01]])
+    offset = pd.Series({'tmax_1_anom': 1.8660196714101467e-17,
+                         'tmax_2_anom': 2.1588885513667475e-18,
+                         'tmax_3_anom': -2.77800792137257e-17,
+                         'tmax_4_anom': -1.5046585038482276e-18,
+                         'tmax_5_anom': 6.855633758889987e-17,
+                         'tmax_6_anom': 1.2565133728950678e-16,
+                         'tmax_7_anom': -1.682038833636812e-16,
+                         'tmax_8_anom': -4.93147069353453e-17,
+                         'tmax_9_anom': -5.568388386733527e-17,
+                         'tmax_10_anom': -6.857473513060945e-17,
+                         'tmax_11_anom': -5.1033121168342616e-17,
+                         'tmax_12_anom': 7.22521940100314e-18,
+                         'prcp_1_anom': 2.3119866369043957e-17,
+                         'prcp_2_anom': -6.94345236790927e-18,
+                         'prcp_3_anom': -6.496954009661655e-18,
+                         'prcp_4_anom': 8.598048593418444e-19,
+                         'prcp_5_anom': 1.6401919476914218e-17,
+                         'prcp_6_anom': 1.5602573080783797e-17,
+                         'prcp_7_anom': 4.914545978647434e-18,
+                         'prcp_8_anom': 8.475965254512473e-18,
+                         'prcp_9_anom': -3.659372882825801e-18,
+                         'prcp_10_anom': 1.5836114680585658e-17,
+                         'prcp_11_anom': -3.2337819354197302e-18,
+                         'prcp_12_anom': 7.32993272565536e-18})
+    scale = pd.Series({'tmax_1_anom': 1.8865622437014982,
+                         'tmax_2_anom': 2.6489118588883036,
+                         'tmax_3_anom': 2.4124290735657565,
+                         'tmax_4_anom': 1.7332918291240935,
+                         'tmax_5_anom': 1.785213705773167,
+                         'tmax_6_anom': 1.4957331626288741,
+                         'tmax_7_anom': 1.4247602725367223,
+                         'tmax_8_anom': 1.1960909657839338,
+                         'tmax_9_anom': 1.5634106015710973,
+                         'tmax_10_anom': 2.061096083517126,
+                         'tmax_11_anom': 2.2480926141933715,
+                         'tmax_12_anom': 2.194900381510665,
+                         'prcp_1_anom': 2.3031507187082725,
+                         'prcp_2_anom': 2.314468092512231,
+                         'prcp_3_anom': 1.9739339127160076,
+                         'prcp_4_anom': 1.6877027601247405,
+                         'prcp_5_anom': 1.6366839253377363,
+                         'prcp_6_anom': 1.6172152019676318,
+                         'prcp_7_anom': 1.3403751362163792,
+                         'prcp_8_anom': 1.5846188488298198,
+                         'prcp_9_anom': 2.0081031910512155,
+                         'prcp_10_anom': 2.1791226360882248,
+                         'prcp_11_anom': 1.8925877913666387,
+                         'prcp_12_anom': 2.1864108301746836})
     
-    def __init__(self, models, month_range=None, var_sets=None):
-        # models: dictionary of variable -> function(Seasonality, history -> Seasonality)
-        self.models = models
-        self.orig_ssn = None
-        if month_range is not None:
-            self.month_range = month_range
-        if var_sets is not None:
-            self.var_sets = var_sets
+    def __init__(self, coefficients=None, variables=None, pc_fit=None, offset=None, scale=None):
+        # coefficients: array with columns corresponding to variables and rows corresponding to
+        # anomaly PCs.
+        # pc_fit: PCA matrix
+        # offset: anomaly offset
+        # scale: anomaly scale
+        if coefficients is not None:
+            self.coefficients = coefficients
+        if variables is not None:
+            self.variables = variables
+        if pc_fit is not None:
+            self.pc_fit = pc_fit
+        if offset is not None:
+            self.offset = offset
+        if scale is not None:
+            self.scale = scale
 
     def apply(self, seasonality, anomaly, periodics, history):
-        ssn_dict = seasonality.to_dict()
-        history = wetDryHistory(history, self.month_range)
-        for var in self.models:
-            ssn_dict[var] = self.models[var].apply(seasonality, history)
-        new_ssn = Seasonality.from_dict(ssn_dict)
+        # Current seasonality, in a math-friendly format.
+        init_dict = seasonality.to_dict()
+        ssn_baseline = pd.Series(init_dict).loc[self.variables]
+        # Required history inputs converted to PCA form.
+        X = wetDryHistory(history, self.offset, self.scale, self.pc_fit)
+        # Add an Intercept column.
+        Xinp = np.concatenate((np.ones((len(X), 1)), X.to_numpy()), axis=1)
+        # Compute anomalies. Should be the same format as baseline.
+        anomalies = pd.DataFrame(Xinp @ self.coefficients,
+                                 columns=self.variables).iloc[-1]
+        result = (ssn_baseline + anomalies).to_dict()
+        for var in result:
+            init_dict[var] = result[var]
+        new_ssn = Seasonality.from_dict(init_dict)
         return (new_ssn, anomaly, periodics)
 
-    def from_data(coefs, year_coefs, data, month_range=None, var_sets=None):
-        # Coefs: data frame with id and Seasonality terms
-        # year_coefs: also with year column (water year)
+    def from_data(coef_anomalies, data,
+                  variables=None,
+                  pc_fit=None,
+                  offset=None,
+                  scale=None):
+        # coef_anomalies: data frame with id, year (water year), and Seasonality anomaly terms
         # data: date, tmax, prcp
-        # month_range: override self.month_range. List of integer months.
-        # var_sets: override self.var_sets. dictionary of coefficient -> predictor variables.
-        if month_range is None:
-            month_range = WetDryEngine.month_range
-        if var_sets is None:
-            var_sets = WetDryEngine.var_sets
-        preds = data.groupby("id").apply(lambda x: wetDryHistory(x, month_range), include_groups=False)
+        # variables, pc_fit, offset, scale: override defaults
+        if variables is None:
+            variables = WetDryEngine.variables
+        if pc_fit is None:
+            pc_fit = WetDryEngine.pc_fit
+        if offset is None:
+            offset = WetDryEngine.offset
+        if scale is None:
+            scale = WetDryEngine.scale
+        preds = data.groupby("id").apply(lambda x: wetDryHistory(x, offset, scale, pc_fit),
+                                         include_groups=False)
         # reset_index is to preserve both id and year.
-        inpdata = coefs.merge(year_coefs.reset_index(), on="id", suffixes=["_ref", ""]
-                             ).set_index(["id", "year"]).merge(preds, on=["id", "year"]).dropna()
-        models = {var: WetDryRunner(LinearGAM(sum([s(i) for i in range(1, len(var_sets[var]))], start=s(0)), lam=10
-                                         ).fit(inpdata[var_sets[var]], inpdata[var]),
-                                var_sets[var])
-                  for var in var_sets}
-        return WetDryEngine(models, month_range, var_sets)
+        inpdata = coef_anomalies.merge(preds, on=["id", "year"]).dropna()
+        Y = inpdata.loc[:, variables]
+        X = inpdata.loc[:, "anom_pc0":]
+        Xnp = np.concatenate((np.ones((len(X), 1)), X.to_numpy()), axis=1)
+        lfit = np.linalg.lstsq(Xnp, Y, rcond=None)[0]
+        return WetDryEngine(lfit, variables, pc_fit, offset, scale)
