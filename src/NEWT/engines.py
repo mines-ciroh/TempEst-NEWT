@@ -9,6 +9,7 @@ import rtseason as rts
 import NEWT.analysis as analysis
 from libschema.classes import ModEngine
 from pygam import LinearGAM, s
+from NEWT.watershed import Seasonality, Anomaly
 
 class ClimateEngine(ModEngine):
     def __init__(self, coef_model):
@@ -31,13 +32,18 @@ def wetDryHistory(data, month_range):
     means = data.groupby("year")[var].mean()
     return (means - data[var].mean()).merge(means, suffixes=["", "_base"], on="year")
 
-def wetDryFn(gam, xvar):
-    def inner(ssn, history):
+class WetDryRunner(object):
+    # Helper class for a pickle-able higher-order function.
+    def __init__(self, gam, xvar):
+        self.gam = gam
+        self.xvar = xvar
+    
+    def apply(self, ssn, history):
         preds = history.copy()
         ssn_inp = ssn.to_dict()
         for v in ssn_inp:
-            preds[v] = ssn_inp[v]
-        return gam(preds[xvar])[0]
+            preds[v + "_ref"] = ssn_inp[v]
+        return self.gam.predict(preds[self.xvar])[0]
 
 class WetDryEngine(ModEngine):
     month_range = [12, 1, 2, 3, 4]
@@ -60,8 +66,8 @@ class WetDryEngine(ModEngine):
         ssn_dict = seasonality.to_dict()
         history = wetDryHistory(history, self.month_range)
         for var in self.models:
-            ssn_dict[var] = self.models[var](seasonality, history)
-        new_ssn = seasonality.from_dict(ssn_dict)
+            ssn_dict[var] = self.models[var].apply(seasonality, history)
+        new_ssn = Seasonality.from_dict(ssn_dict)
         return (new_ssn, anomaly, periodics)
 
     def from_data(coefs, year_coefs, data, month_range=None, var_sets=None):
@@ -75,9 +81,11 @@ class WetDryEngine(ModEngine):
         if var_sets is None:
             var_sets = WetDryEngine.var_sets
         preds = data.groupby("id").apply(lambda x: wetDryHistory(x, month_range), include_groups=False)
-        inpdata = coefs.merge(year_coefs, on="id", suffixes=["_ref", ""]).merge(preds, on=["id", "year"]).dropna()
-        models = {var: wetDryFn(LinearGAM(sum([s(i) for i in range(1, len(self.var_sets[var]))], start=s(0)), lam=10
-                                         ).fit(inpdata[self.var_sets[var]], inpdata[var]),
-                                self.var_sets[var])
-                  for var in self.var_sets}
+        # reset_index is to preserve both id and year.
+        inpdata = coefs.merge(year_coefs.reset_index(), on="id", suffixes=["_ref", ""]
+                             ).set_index(["id", "year"]).merge(preds, on=["id", "year"]).dropna()
+        models = {var: WetDryRunner(LinearGAM(sum([s(i) for i in range(1, len(var_sets[var]))], start=s(0)), lam=10
+                                         ).fit(inpdata[var_sets[var]], inpdata[var]),
+                                var_sets[var])
+                  for var in var_sets}
         return WetDryEngine(models, month_range, var_sets)
