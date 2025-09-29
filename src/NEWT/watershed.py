@@ -205,7 +205,6 @@ class Watershed(SCHEMA):
                    "columns", "max_period", "window", "logfile"]:
             if nm in kwargs:
                 kwargs.pop(nm)
-        self.log("Initializing")
         super().__init__(seasonality,
                        anomaly,
                        at_day,
@@ -215,6 +214,7 @@ class Watershed(SCHEMA):
                        window=6,
                        logfile=logfile,
                        **kwargs)
+        self.log("Initialized")
 
     def init_with_schema_names(**kwargs):
         # Switch variable names to work with LibSCHEMA args.
