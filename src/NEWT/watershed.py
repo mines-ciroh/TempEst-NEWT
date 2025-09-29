@@ -133,6 +133,27 @@ class Anomaly(classes.Anomaly):
         
 
 class Watershed(SCHEMA):
+    """
+    Parameters
+    ----------
+    seasonality : Seasonality | dict
+        a Seasonaly object or dictionary of {Intercept, Amplitude,
+        SpringSummer, FallWinter, SpringDay, SummerDay, FallDay,
+        WinterDay}.
+    anomaly : Anomaly | dict
+        an Anomaly object or dictionary of {at_coef} with optional
+        {anomgam, quantiles, anomnoise, conv}.
+    at_day : pd.DataFrame
+        data frame of [day, mean_tmax] or [period, tmax].
+    engines : list[tuple[int, classes.ModEngine]]
+        Modification engines to apply at specified frequencies.
+    extra_columns : list of strings, optional
+        history (e.g., for use by modification engines).  All columns
+        specified must be provided for each step or specified through
+        setters. The default is [].
+    logfile : str, optional
+        Where to store logs, if anywhere. The default is None.
+    """
     basic_histcol = ["date", "day", "tmax"]
     def __init__(self,
                  seasonality: Seasonality | dict,
@@ -140,7 +161,8 @@ class Watershed(SCHEMA):
                  at_day: pd.DataFrame,
                  engines: list[tuple[int, classes.ModEngine]],
                  extra_columns: list[str]=[],
-                 logfile: str=None):
+                 logfile: str=None,
+                 **kwargs):
         """
         Initialize a Watershed object.
 
@@ -184,7 +206,8 @@ class Watershed(SCHEMA):
                        self.basic_histcol + extra_columns,
                        max_period=365,
                        window=6,
-                       logfile=logfile)
+                       logfile=logfile,
+                       **kwargs)
     
     def initialize_run(self, period: int):
         super().initialize_run(period)
