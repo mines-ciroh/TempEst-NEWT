@@ -215,7 +215,7 @@ class Watershed(SCHEMA):
         kwargs["at_day"] = kwargs["periodics"]
         return Watershed(**kwargs)
     
-    def from_file(self, filename: str):
+    def from_file(filename: str):
         # Watershed uses different arguments from SCHEMA, but they are align-able.
         with open(filename) as f:
             coefs = load(f, Loader)
