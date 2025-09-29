@@ -205,6 +205,7 @@ class Watershed(SCHEMA):
                    "columns", "max_period", "window", "logfile"]:
             if nm in kwargs:
                 kwargs.pop(nm)
+        self.log("Initializing")
         super().__init__(seasonality,
                        anomaly,
                        at_day,
@@ -227,10 +228,12 @@ class Watershed(SCHEMA):
         return Watershed.init_with_schema_names(**coefs)
     
     def initialize_run(self, period: int):
+        self.log("Initializing run")
         super().initialize_run(period)
         if self.anomaly.quantiles is not None:
             for qn in self.anomaly.quantiles:
                 self.history[f"output_{qn}"] = []
+        self.log("Initialized run")
     
     def coefs_to_df(self):
         return pd.DataFrame([self.to_dict()])
@@ -240,6 +243,7 @@ class Watershed(SCHEMA):
         Run a single step, incrementally.  Updates history and returns
         today's prediction.
         """
+        self.log("Running step")
         step = super().run_step(inputs, period)
         # If there are quantiles, then the prediction is a vector, not a single value.
         # In that case, history["output"] just got a vector appended, and the
@@ -250,6 +254,7 @@ class Watershed(SCHEMA):
                 self.history[f"output_{qn}"].append(step[i])
             # Use the mean for the single-output column.
             self.history["output"][-1] = np.mean(self.history["output"][-1])
+        self.log("Ran step")
         return step
 
     def run_series(self, data, context=True):
