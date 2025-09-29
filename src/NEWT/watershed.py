@@ -9,6 +9,7 @@ import numpy as np
 import pygam
 from libschema import SCHEMA
 import libschema.classes as classes
+from yaml import load, Loader
 
 def anomilize(data: pd.DataFrame, obs=True) -> pd.DataFrame:
     """
@@ -208,6 +209,17 @@ class Watershed(SCHEMA):
                        window=6,
                        logfile=logfile,
                        **kwargs)
+
+    def init_with_schema_names(**kwargs):
+        # Switch variable names to work with LibSCHEMA args.
+        kwargs["at_day"] = kwargs["periodics"]
+        return Watershed(**kwargs)
+    
+    def from_file(self, filename: str):
+        # Watershed uses different arguments from SCHEMA, but they are align-able.
+        with open(filename) as f:
+            coefs = load(f, Loader)
+        return Watershed.init_with_schema_names(**coefs)
     
     def initialize_run(self, period: int):
         super().initialize_run(period)
