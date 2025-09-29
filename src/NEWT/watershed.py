@@ -200,6 +200,11 @@ class Watershed(SCHEMA):
             seasonality.quantiles = len(anomaly.quantiles)
         at_day = at_day.rename(columns={"day": "period",
                                         "mean_tmax": "tmax"})
+        # Exclude all specified arguments from kwargs to avoid duplicates
+        for nm in ["seasonality", "anomaly", "periodics", "engines",
+                   "columns", "max_period", "window", "logfile"]:
+            if nm in kwargs:
+                kwargs.pop(nm)
         super().__init__(seasonality,
                        anomaly,
                        at_day,
