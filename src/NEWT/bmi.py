@@ -29,6 +29,10 @@ class NextBmi(SchemaBmi):
 
     def initialize(self, filename):
         super().initialize(Watershed, filename)
+
+    def update(self):
+        self._model.log("Attempting update")
+        super().update()
     
     
 
