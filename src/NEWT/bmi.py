@@ -11,11 +11,28 @@ is the watershed model NEWT.
 
 from NEWT import Watershed
 from bmipy import Bmi
+from libschema.bmi import SchemaBmi
 import numpy as np
 
 logalot = False
 
-class NextBmi(Bmi):
+class NextBmi(SchemaBmi):
+    def __init__(self):
+        super.__init__(
+            name="TempEst-NEXT",
+            inputs=("land_surface_air__temperature",),
+            input_map={"land_surface_air__temperature": "tmax"},
+            input_units=["Celsius"],
+            output="channel_water__temperature",
+            output_units="Celsius"
+        )
+
+    def initialize(self, filename):
+        super.initialize(Watershed, filename)
+    
+    
+
+class NextOldBmi(Bmi):
     """
     BMI implementation for TempEst-NEXT.
     Example: https://github.com/csdms/bmi-example-python/blob/master/heat/bmi_heat.py
