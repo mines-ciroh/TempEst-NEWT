@@ -31,7 +31,7 @@ class NextBmi(SchemaBmi):
         super().initialize(Watershed, filename)
 
     def update(self):
-        self._model.log("Attempting update")
+        self._values["day"] = self._model.period
         super().update()
     
     
