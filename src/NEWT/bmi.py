@@ -18,7 +18,7 @@ logalot = False
 
 class NextBmi(SchemaBmi):
     def __init__(self):
-        super.__init__(
+        super().__init__(
             name="TempEst-NEXT",
             inputs=("land_surface_air__temperature",),
             input_map={"land_surface_air__temperature": "tmax"},
@@ -28,7 +28,7 @@ class NextBmi(SchemaBmi):
         )
 
     def initialize(self, filename):
-        super.initialize(Watershed, filename)
+        super().initialize(Watershed, filename)
     
     
 
