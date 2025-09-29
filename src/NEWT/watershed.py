@@ -155,7 +155,7 @@ class Watershed(SCHEMA):
     logfile : str, optional
         Where to store logs, if anywhere. The default is None.
     """
-    basic_histcol = ["date", "day", "tmax"]
+    basic_histcol = ["day", "tmax"]
     def __init__(self,
                  seasonality: Seasonality | dict,
                  anomaly: Anomaly | dict,
@@ -163,6 +163,7 @@ class Watershed(SCHEMA):
                  engines: list[tuple[int, classes.ModEngine]],
                  extra_columns: list[str]=[],
                  logfile: str=None,
+                 init_period: int=None,
                  **kwargs):
         """
         Initialize a Watershed object.
@@ -186,6 +187,8 @@ class Watershed(SCHEMA):
             setters. The default is [].
         logfile : str, optional
             Where to store logs, if anywhere. The default is None.
+        init_period : int, optional
+            Initial period, if any.
 
         Returns
         -------
@@ -213,6 +216,7 @@ class Watershed(SCHEMA):
                        max_period=365,
                        window=6,
                        logfile=logfile,
+                       init_period=init_period,
                        **kwargs)
         self.log("Initialized")
 
