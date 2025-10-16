@@ -250,14 +250,14 @@ class Watershed(SCHEMA):
         self.log("Running step")
         step = super().run_step(inputs, period)
         # If there are quantiles, then the prediction is a vector, not a single value.
-        # In that case, history["output"] just got a vector appended, and the
+        # In that case, history["prediction"] just got a vector appended, and the
         # step above is a vector.
         # Returning the vector is reasonable, but we need to fix the history.
         if self.anomaly.quantiles is not None:
             for (i, qn) in enumerate(self.anomaly.quantiles):
                 self.history[f"output_{qn}"].append(step[i])
             # Use the mean for the single-output column.
-            self.history["output"][-1] = np.mean(self.history["output"][-1])
+            self.history["prediction"][-1] = np.mean(self.history["prediction"][-1])
         self.log("Ran step")
         return step
 
