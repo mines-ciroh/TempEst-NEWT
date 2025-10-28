@@ -26,7 +26,7 @@ An optional argument to `run_series` is `context`. If True (default), it adds a 
 
 ## Detailed Documentation
 
-See the [documentation](https://rivertempest.org/newt/newt.html) at RiverTempest.org.
+See the [documentation](https://rivertempest.org/newt/NEWT.html) at RiverTempest.org. Since a NEWT model is a LibSCHEMA model, much of the documentation about running NEWT models is under the [libSCHEMA documentation](https://rivertempest.org/libschema/libschema.html).
 
 ## Capabilities Overview
 
@@ -36,4 +36,4 @@ The default NEWT configuration runs a stationary seasonality plus weather model,
 
 If you use TempEst-NEWT in your research, please cite:
 
-Philippus, Corona and Hogue. "Kilometer-Resolution Daily Stream Water Temperature Modeling and Forecasting for Ungaged Watersheds at the CONUS Scale." In preparation.
+Philippus, Corona and Hogue. "Daily Stream Water Temperature Modeling and Forecasting for Ungaged Watersheds at the CONUS Scale." In review.
