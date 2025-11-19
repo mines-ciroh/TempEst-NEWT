@@ -14,6 +14,8 @@ TempEst-NEWT is implemented using [libSCHEMA](https://rivertempest.org/libschema
 
 Install from PyPI: `pip install tempest-newt`.  The installed module is called NEWT: `import NEWT`.  The main model class is `NEWT.Watershed` ([documentation](https://rivertempest.org/newt/NEWT.html#NEWT.watershed.Watershed)).
 
+Dependencies: pandas, numpy (>=2), rtseason (>=1.1.3), bmipy, scipy, pygam (>=0.10), libschema (>=0.1.4), pyyaml
+
 ### Data Preparation
 
 To generate predictions with a NEWT model with specified coefficients (`Watershed.run_series(data)`), the requirement is a data frame with columns `date` (a Pandas datetime), `day` (Julian day), and `tmax` (daily max air temperature, averaged over the watershed). To train a model from data (`Watershed.from_data(data)`), there also needs to be a `temperature` (observed daily stream water temperature) column. Performance results are for daily mean, but this also works with daily max or min. Extra data columns may be required depending on the use of modification engines (see [LibSCHEMA docs](https://rivertempest.org/libschema/libschema.html#libschema.model.SCHEMA)).
