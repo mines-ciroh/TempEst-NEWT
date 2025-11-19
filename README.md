@@ -33,10 +33,13 @@ from NEWT import Watershed
 import pandas as pd
 
 # `temperature` column included to demonstrate building a model from data. Not required for prediction.
-input_data = pd.DataFrame({"date": pd.to_datetime(["2025-01-01", "2025-01-02", ...]), "day": [1, 2, 3, ..., 365], "tmax": [-3.1, 0, 5.6, 2, ...]}, "temperature": [1.1, 0.5, 0.6, 1.3, ...]})
+input_data = pd.DataFrame({"date": pd.to_datetime(["2025-01-01", "2025-01-02", ...]),
+                            "day": [1, 2, 3, ..., 365], "tmax": [-3.1, 0, 5.6, 2, ...]},
+                            "temperature": [1.1, 0.5, 0.6, 1.3, ...]})
 
 # Usually, the provided coefficients would be fitted or estimated, but you can also manually specify them, as here.
-model = Watershed(seasonality={"Intercept": 10, "Amplitude": 8, "SpringSummer": 1.2, "FallWinter": 0.5, "SpringDay": 150, "SummerDay": 220, "FallDay": 330, "WinterDay": 30},
+model = Watershed(seasonality={"Intercept": 10, "Amplitude": 8, "SpringSummer": 1.2, "FallWinter": 0.5,
+                                "SpringDay": 150, "SummerDay": 220, "FallDay": 330, "WinterDay": 30},
                   anomaly={"at_coef": 0.3},
                   at_day=pd.DataFrame({"day": [1, 2, 3, ..., 365], "mean_tmax": [5.0, 4.9, 5.0, 4.7, 4.5, ...]}),
                   engines=[])
